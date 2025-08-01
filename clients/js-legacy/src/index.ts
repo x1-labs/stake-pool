@@ -47,9 +47,6 @@ import {
 } from './constants';
 import { create } from 'superstruct';
 import BN from 'bn.js';
-import dotenv from 'dotenv'
-
-dotenv.config();
 
 export type { StakePool, AccountType, ValidatorList, ValidatorStakeInfo } from './layouts';
 export { DEVNET_STAKE_POOL_PROGRAM_ID, STAKE_POOL_PROGRAM_ID } from './constants';
@@ -82,10 +79,6 @@ export interface StakePoolAccounts {
 }
 
 export function getStakePoolProgramId(rpcEndpoint: string): PublicKey {
-  if (process.env.STAKE_POOL_PROGRAM_ID) {
-    return new PublicKey(process.env.STAKE_POOL_PROGRAM_ID);
-  }
-
   if (rpcEndpoint.includes('devnet')) {
     return DEVNET_STAKE_POOL_PROGRAM_ID;
   } else {

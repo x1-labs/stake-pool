@@ -72,6 +72,7 @@ function generateConfig(configType, format) {
         'bn.js',
         'buffer',
         'buffer-layout',
+        'dotenv'
       ];
     }
 
@@ -100,6 +101,7 @@ function generateConfig(configType, format) {
       'bn.js',
       'buffer',
       'buffer-layout',
+      'dotenv'
     ];
   }
 

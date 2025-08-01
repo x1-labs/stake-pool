@@ -9,6 +9,7 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from '@solana/web3.js';
+import { stakePoolConfig } from './config';
 import {
   createApproveInstruction,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -79,6 +80,11 @@ export interface StakePoolAccounts {
 }
 
 export function getStakePoolProgramId(rpcEndpoint: string): PublicKey {
+  const programId = stakePoolConfig.getProgramId();
+  if (programId) {
+    return programId;
+  }
+
   if (rpcEndpoint.includes('devnet')) {
     return DEVNET_STAKE_POOL_PROGRAM_ID;
   } else {
@@ -1265,4 +1271,19 @@ export async function updatePoolTokenMetadata(
   return {
     instructions,
   };
+}
+
+/**
+ * Set a custom stake pool program ID
+ * @param programId The custom program ID to use
+ */
+export function setStakePoolProgramId(programId: PublicKey): void {
+  stakePoolConfig.setProgramId(programId);
+}
+
+/**
+ * Reset stake pool program ID to its default
+ */
+export function resetStakePoolProgramId(): void {
+  stakePoolConfig.reset();
 }

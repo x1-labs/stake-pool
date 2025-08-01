@@ -51,6 +51,7 @@
     "bn.js": "^5.2.0",
     "buffer": "^6.0.3",
     "buffer-layout": "^1.2.2",
+    "dotenv": "^17.2.1",
     "superstruct": "^2.0.2"
   },
   "devDependencies": {

@@ -161,6 +161,7 @@ export interface StakePool {
 }
 
 export const StakePoolLayout = struct<StakePool>([
+  u8('version'),
   u8('accountType'),
   publicKey('manager'),
   publicKey('staker'),

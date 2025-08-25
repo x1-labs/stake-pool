@@ -226,6 +226,7 @@ STAKE_POOL_LAYOUT = Struct(
     "next_sol_withdrawal_fee" / FEE_LAYOUT,
     "last_epoch_pool_token_supply" / Int64ul,
     "last_epoch_total_lamports" / Int64ul,
+    "max_validator_stake" / Int64ul
 )
 
 DECODE_STAKE_POOL_LAYOUT = Struct(
@@ -302,6 +303,7 @@ DECODE_STAKE_POOL_LAYOUT = Struct(
         }),
     "last_epoch_pool_token_supply" / Int64ul,
     "last_epoch_total_lamports" / Int64ul,
+    "max_validator_stake" / Int64ul
 )
 
 VALIDATOR_INFO_LAYOUT = Struct(

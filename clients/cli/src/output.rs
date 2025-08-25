@@ -71,6 +71,7 @@ pub(crate) struct CliStakePool {
     pub next_sol_withdrawal_fee: Option<CliStakePoolFee>,
     pub last_epoch_pool_token_supply: u64,
     pub last_epoch_total_lamports: u64,
+    pub max_validator_stake: Option<u64>,
     pub details: Option<CliStakePoolDetails>,
 }
 
@@ -167,6 +168,12 @@ impl VerboseDisplay for CliStakePool {
             "SOL Deposit Referral Fee: {}% of SOL Deposit Fee",
             &self.sol_referral_fee
         )?;
+        match &self.max_validator_stake {
+            None => {}
+            Some(max_stake) => {
+                writeln!(w, "Max Validator Stake: {}", Sol(*max_stake))?;
+            }
+        }
         writeln!(w)?;
 
         match &self.details {
@@ -231,6 +238,12 @@ impl Display for CliStakePool {
             "SOL Deposit Referral Fee: {}% of SOL Deposit Fee",
             &self.sol_referral_fee
         )?;
+        match &self.max_validator_stake {
+            None => {}
+            Some(max_stake) => {
+                writeln!(f, "Max Validator Stake: {}", Sol(*max_stake))?;
+            }
+        }
         Ok(())
     }
 }
@@ -499,6 +512,7 @@ impl From<(Pubkey, StakePool, ValidatorList, Pubkey)> for CliStakePool {
                 .map(CliStakePoolFee::from),
             last_epoch_pool_token_supply: stake_pool.last_epoch_pool_token_supply,
             last_epoch_total_lamports: stake_pool.last_epoch_total_lamports,
+            max_validator_stake: stake_pool.max_validator_stake,
             details: None,
         }
     }

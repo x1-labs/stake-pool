@@ -164,6 +164,9 @@ pub enum StakePoolError {
     /// Missing required sysvar account
     #[error("Missing required sysvar account")]
     MissingRequiredSysvar,
+    /// Validator stake would exceed maximum allowed stake limit
+    #[error("Validator stake would exceed maximum allowed stake limit")]
+    ExceedsMaxValidatorStake,
 }
 impl From<StakePoolError> for ProgramError {
     fn from(e: StakePoolError) -> Self {

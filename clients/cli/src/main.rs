@@ -2224,6 +2224,30 @@ fn command_set_fee(
     Ok(())
 }
 
+fn command_set_max_validator_stake(
+    config: &Config,
+    stake_pool_address: &Pubkey,
+    max_stake: Option<u64>,
+) -> CommandResult {
+    if !config.no_update {
+        command_update(config, stake_pool_address, false, false, false)?;
+    }
+    let mut signers = vec![config.fee_payer.as_ref(), config.manager.as_ref()];
+    unique_signers!(signers);
+    let transaction = checked_transaction_with_signers(
+        config,
+        &[spl_stake_pool::instruction::set_max_validator_stake(
+            &config.stake_pool_program_id,
+            stake_pool_address,
+            &config.manager.pubkey(),
+            max_stake,
+        )],
+        &signers,
+    )?;
+    send_transaction(config, transaction)?;
+    Ok(())
+}
+
 fn command_list_all_pools(config: &Config) -> CommandResult {
     let all_pools = get_stake_pools(&config.rpc_client, &config.stake_pool_program_id)?;
     let cli_stake_pool_vec: Vec<CliStakePool> =
@@ -3135,6 +3159,26 @@ fn main() {
                     .help("Fee percentage, maximum 100"),
             )
         )
+        .subcommand(SubCommand::with_name("set-max-validator-stake")
+            .about("Set the maximum stake per validator. Must be signed by the manager.")
+            .arg(
+                Arg::with_name("pool")
+                    .index(1)
+                    .validator(is_pubkey)
+                    .value_name("POOL_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Stake pool address."),
+            )
+            .arg(
+                Arg::with_name("max_stake")
+                    .index(2)
+                    .value_name("MAX_STAKE")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Maximum stake per validator in SOL, or 'none' to remove the limit"),
+            )
+        )
         .subcommand(SubCommand::with_name("list-all")
             .about("List information about all stake pools")
         )
@@ -3519,6 +3563,21 @@ fn main() {
                 _ => unreachable!(),
             };
             command_set_fee(&config, &stake_pool_address, fee_type)
+        }
+        ("set-max-validator-stake", Some(arg_matches)) => {
+            let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
+            let max_stake = match arg_matches.value_of("max_stake").unwrap() {
+                "none" => None,
+                amount_str => {
+                    let amount = amount_str.parse::<f64>()
+                        .unwrap_or_else(|_| {
+                            eprintln!("Invalid amount: {}", amount_str);
+                            exit(1);
+                        });
+                    Some(native_token::sol_to_lamports(amount))
+                }
+            };
+            command_set_max_validator_stake(&config, &stake_pool_address, max_stake)
         }
         ("list-all", _) => command_list_all_pools(&config),
         ("deposit-all-stake", Some(arg_matches)) => {

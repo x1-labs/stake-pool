@@ -10,6 +10,7 @@ import {
 } from '@solana/web3.js';
 import * as BufferLayout from '@solana/buffer-layout';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import BN from 'bn.js';
 import { InstructionType, encodeData, decodeData } from './utils';
 import {
   METADATA_MAX_NAME_LENGTH,
@@ -38,7 +39,8 @@ export type StakePoolInstructionType =
   | 'DecreaseValidatorStakeWithReserve'
   | 'Redelegate'
   | 'AddValidatorToPool'
-  | 'RemoveValidatorFromPool';
+  | 'RemoveValidatorFromPool'
+  | 'SetMaxValidatorStake';
 
 // 'UpdateTokenMetadata' and 'CreateTokenMetadata' have dynamic layouts
 
@@ -177,6 +179,14 @@ export const STAKE_POOL_INSTRUCTION_LAYOUTS: {
   Redelegate: {
     index: 22,
     layout: BufferLayout.struct<any>([BufferLayout.u8('instruction')]),
+  },
+  SetMaxValidatorStake: {
+    index: 27,
+    layout: BufferLayout.struct<any>([
+      BufferLayout.u8('instruction'),
+      BufferLayout.u8('maxStakeOption'),
+      BufferLayout.ns64('maxStake'),
+    ]),
   },
 });
 
@@ -384,6 +394,13 @@ export type RemoveValidatorFromPoolParams = {
   transientStake: PublicKey;
 };
 
+export type SetMaxValidatorStakeParams = {
+  programId?: PublicKey | undefined;
+  stakePool: PublicKey;
+  manager: PublicKey;
+  maxStake?: BN | undefined;
+};
+
 /**
  * Stake Pool Instruction class
  */
@@ -454,6 +471,35 @@ export class StakePoolInstruction {
       { pubkey: transientStake, isSigner: false, isWritable: true },
       { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: StakeProgram.programId, isSigner: false, isWritable: false },
+    ];
+
+    return new TransactionInstruction({
+      programId: programId ?? STAKE_POOL_PROGRAM_ID,
+      keys,
+      data,
+    });
+  }
+
+  /**
+   * Creates instruction to set the max validator stake for the stake pool.
+   */
+  static setMaxValidatorStake(params: SetMaxValidatorStakeParams): TransactionInstruction {
+    const { programId, stakePool, manager, maxStake } = params;
+    
+    const type = STAKE_POOL_INSTRUCTION_LAYOUTS.SetMaxValidatorStake;
+    const data = Buffer.alloc(type.layout.span);
+    
+    const layoutData = {
+      instruction: type.index,
+      maxStakeOption: maxStake === undefined ? 0 : 1,
+      maxStake: maxStake ?? new BN(0),
+    };
+    
+    type.layout.encode(layoutData, data);
+
+    const keys = [
+      { pubkey: stakePool, isSigner: false, isWritable: true },
+      { pubkey: manager, isSigner: true, isWritable: false },
     ];
 
     return new TransactionInstruction({

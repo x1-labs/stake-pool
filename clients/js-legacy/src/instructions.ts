@@ -485,16 +485,16 @@ export class StakePoolInstruction {
    */
   static setMaxValidatorStake(params: SetMaxValidatorStakeParams): TransactionInstruction {
     const { programId, stakePool, manager, maxStake } = params;
-    
+
     const type = STAKE_POOL_INSTRUCTION_LAYOUTS.SetMaxValidatorStake;
     const data = Buffer.alloc(type.layout.span);
-    
+
     const layoutData = {
       instruction: type.index,
       maxStakeOption: maxStake === undefined ? 0 : 1,
       maxStake: maxStake ?? new BN(0),
     };
-    
+
     type.layout.encode(layoutData, data);
 
     const keys = [

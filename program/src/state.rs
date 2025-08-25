@@ -203,6 +203,7 @@ impl Default for StakePool {
             next_sol_withdrawal_fee: FutureEpoch::None,
             last_epoch_pool_token_supply: 0,
             last_epoch_total_lamports: 0,
+            max_validator_stake: None,
             _reserved: [0; 256],
         }
     }

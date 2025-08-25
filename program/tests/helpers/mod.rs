@@ -2004,6 +2004,7 @@ impl StakePoolAccounts {
             last_epoch_pool_token_supply: 0,
             last_epoch_total_lamports: 0,
             max_validator_stake: None,
+            reserved: [0; 128],
         };
         let mut validator_list = ValidatorList::new(self.max_validators);
         validator_list.validators = vec![];

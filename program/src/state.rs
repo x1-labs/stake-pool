@@ -41,7 +41,7 @@ pub enum AccountType {
 
 /// Initialized program details.
 #[repr(C)]
-#[derive(Clone, Debug, Default, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub struct StakePool {
     /// Account type, must be `StakePool` currently
     pub account_type: AccountType,
@@ -161,7 +161,50 @@ pub struct StakePool {
     /// When set, no validator can have more than this amount of stake (active + transient)
     /// When None, there is no limit
     pub max_validator_stake: Option<u64>,
+
+    /// Reserved space for future use
+    pub reserved: [u8; 128],
 }
+
+impl Default for StakePool {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::StakePool,
+            manager: Pubkey::default(),
+            staker: Pubkey::default(),
+            stake_deposit_authority: Pubkey::default(),
+            stake_withdraw_bump_seed: 0,
+            validator_list: Pubkey::default(),
+            reserve_stake: Pubkey::default(),
+            pool_mint: Pubkey::default(),
+            manager_fee_account: Pubkey::default(),
+            token_program_id: Pubkey::default(),
+            total_lamports: 0,
+            pool_token_supply: 0,
+            last_update_epoch: 0,
+            lockup: Lockup::default(),
+            epoch_fee: Fee::default(),
+            next_epoch_fee: FutureEpoch::None,
+            preferred_deposit_validator_vote_address: None,
+            preferred_withdraw_validator_vote_address: None,
+            stake_deposit_fee: Fee::default(),
+            stake_withdrawal_fee: Fee::default(),
+            next_stake_withdrawal_fee: FutureEpoch::None,
+            stake_referral_fee: 0,
+            sol_deposit_authority: None,
+            sol_deposit_fee: Fee::default(),
+            sol_referral_fee: 0,
+            sol_withdraw_authority: None,
+            sol_withdrawal_fee: Fee::default(),
+            next_sol_withdrawal_fee: FutureEpoch::None,
+            last_epoch_pool_token_supply: 0,
+            last_epoch_total_lamports: 0,
+            max_validator_stake: None,
+            reserved: [0; 128],
+        }
+    }
+}
+
 impl StakePool {
     /// calculate the pool tokens that should be minted for a deposit of
     /// `stake_lamports`

@@ -855,6 +855,7 @@ impl Processor {
             &validator_list,
         )?;
 
+        stake_pool.version = 1;
         stake_pool.account_type = AccountType::StakePool;
         stake_pool.manager = *manager_info.key;
         stake_pool.staker = *staker_info.key;
@@ -883,6 +884,7 @@ impl Processor {
         stake_pool.next_sol_withdrawal_fee = FutureEpoch::None;
         stake_pool.last_epoch_pool_token_supply = 0;
         stake_pool.last_epoch_total_lamports = 0;
+        stake_pool._reserved = [0; 256];
 
         borsh::to_writer(&mut stake_pool_info.data.borrow_mut()[..], &stake_pool)
             .map_err(|e| e.into())

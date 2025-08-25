@@ -188,6 +188,7 @@ FEE_LAYOUT = Struct(
 )
 
 STAKE_POOL_LAYOUT = Struct(
+    "version" / Int8ul,
     "account_type" / Int8ul,
     "manager" / PUBLIC_KEY_LAYOUT,
     "staker" / PUBLIC_KEY_LAYOUT,
@@ -228,6 +229,7 @@ STAKE_POOL_LAYOUT = Struct(
 )
 
 DECODE_STAKE_POOL_LAYOUT = Struct(
+    "version" / Int8ul,
     "account_type" / Int8ul,
     "manager" / PUBLIC_KEY_LAYOUT,
     "staker" / PUBLIC_KEY_LAYOUT,

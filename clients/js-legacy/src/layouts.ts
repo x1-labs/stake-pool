@@ -158,6 +158,7 @@ export interface StakePool {
   nextSolWithdrawalFee?: Fee | undefined;
   lastEpochPoolTokenSupply: BN;
   lastEpochTotalLamports: BN;
+  maxValidatorStake?: BN | undefined;
 }
 
 export const StakePoolLayout = struct<StakePool>([
@@ -192,6 +193,7 @@ export const StakePoolLayout = struct<StakePool>([
   futureEpoch(struct(feeFields), 'nextSolWithdrawalFee'),
   u64('lastEpochPoolTokenSupply'),
   u64('lastEpochTotalLamports'),
+  option(u64(), 'maxValidatorStake'),
 ]);
 
 export enum ValidatorStakeInfoStatus {

@@ -737,6 +737,15 @@ pub enum StakePoolInstruction {
         /// Minimum amount of lamports that must be received
         minimum_lamports_out: u64,
     },
+
+    /// (Manager only) Update the maximum stake per validator
+    ///
+    /// 0. `[w]` Stake pool
+    /// 1. `[s]` Manager
+    SetMaxValidatorStake {
+        /// Maximum stake per validator, or None to remove the limit
+        max_stake: Option<u64>,
+    },
 }
 
 /// Creates an `Initialize` instruction.
@@ -2644,5 +2653,23 @@ pub fn create_token_metadata(
         accounts,
         data: borsh::to_vec(&StakePoolInstruction::CreateTokenMetadata { name, symbol, uri })
             .unwrap(),
+    }
+}
+
+/// Creates a `SetMaxValidatorStake` instruction.
+pub fn set_max_validator_stake(
+    program_id: &Pubkey,
+    stake_pool: &Pubkey,
+    manager: &Pubkey,
+    max_stake: Option<u64>,
+) -> Instruction {
+    let accounts = vec![
+        AccountMeta::new(*stake_pool, false),
+        AccountMeta::new_readonly(*manager, true),
+    ];
+    Instruction {
+        program_id: *program_id,
+        accounts,
+        data: borsh::to_vec(&StakePoolInstruction::SetMaxValidatorStake { max_stake }).unwrap(),
     }
 }

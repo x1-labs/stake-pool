@@ -1609,6 +1609,24 @@ impl Processor {
             return Err(StakePoolError::ValidatorNotFound.into());
         }
 
+        // Check if the increase would exceed the max validator stake limit
+        if let Some(max_stake) = stake_pool.max_validator_stake {
+            let current_total_stake = validator_stake_info.stake_lamports()?;
+            let new_total_stake = current_total_stake
+                .checked_add(lamports)
+                .ok_or(StakePoolError::CalculationFailure)?;
+            
+            if new_total_stake > max_stake {
+                msg!(
+                    "Validator stake would exceed maximum allowed. Current: {}, Increase: {}, Maximum: {}",
+                    current_total_stake,
+                    lamports,
+                    max_stake
+                );
+                return Err(StakePoolError::ExceedsMaxValidatorStake.into());
+            }
+        }
+
         let stake_space = std::mem::size_of::<stake::state::StakeStateV2>();
         let stake_rent = rent.minimum_balance(stake_space);
         let stake_minimum_delegation = stake::tools::get_minimum_delegation()?;
@@ -3379,6 +3397,29 @@ impl Processor {
         Ok(())
     }
 
+    /// Processes [`SetMaxValidatorStake`](enum.Instruction.html).
+    #[inline(never)] // needed to avoid stack size violation
+    fn process_set_max_validator_stake(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        max_stake: Option<u64>,
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let stake_pool_info = next_account_info(account_info_iter)?;
+        let manager_info = next_account_info(account_info_iter)?;
+
+        check_account_owner(stake_pool_info, program_id)?;
+        let mut stake_pool = try_from_slice_unchecked::<StakePool>(&stake_pool_info.data.borrow())?;
+        if !stake_pool.is_valid() {
+            return Err(StakePoolError::InvalidState.into());
+        }
+        stake_pool.check_manager(manager_info)?;
+
+        stake_pool.max_validator_stake = max_stake;
+        borsh::to_writer(&mut stake_pool_info.data.borrow_mut()[..], &stake_pool)?;
+        Ok(())
+    }
+
     /// Processes [`SetStaker`](enum.Instruction.html).
     #[inline(never)] // needed to avoid stack size violation
     fn process_set_staker(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
@@ -3657,6 +3698,10 @@ impl Processor {
                     Some(minimum_lamports_out),
                 )
             }
+            StakePoolInstruction::SetMaxValidatorStake { max_stake } => {
+                msg!("Instruction: SetMaxValidatorStake");
+                Self::process_set_max_validator_stake(program_id, accounts, max_stake)
+            }
         }
     }
 }
@@ -3712,6 +3757,7 @@ impl PrintProgramError for StakePoolError {
             StakePoolError::IncorrectMintDecimals => msg!("Error: Provided mint does not have 9 decimals to match SOL"),
             StakePoolError::ReserveDepleted => msg!("Error: Pool reserve does not have enough lamports to fund rent-exempt reserve in split destination. Deposit more SOL in reserve, or pre-fund split destination with the rent-exempt reserve for a stake account."),
             StakePoolError::MissingRequiredSysvar => msg!("Missing required sysvar account"),
+            StakePoolError::ExceedsMaxValidatorStake => msg!("Error: Validator stake would exceed maximum allowed stake limit"),
         }
     }
 }

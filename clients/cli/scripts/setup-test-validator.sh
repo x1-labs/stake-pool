@@ -17,14 +17,14 @@ create_keypair () {
 
 setup_test_validator() {
   solana-test-validator \
-    --clone-upgradeable-program XPoo1BdBxH9trB4c7DpJREPZ9xRkN4avCXBUWDg2L2J \
+    --clone-upgradeable-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux \
     --clone-upgradeable-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s \
     --url https://api.mainnet-beta.solana.com \
     --slots-per-epoch 32 \
     --quiet --reset &
   # Uncomment to use a locally built stake program
   #solana-test-validator \
-  #  --bpf-program XPoo1BdBxH9trB4c7DpJREPZ9xRkN4avCXBUWDg2L2J ../../../target/deploy/spl_stake_pool.so \
+  #  --bpf-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux ../../../target/deploy/spl_stake_pool.so \
   #  --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s ../../program/tests/fixtures/mpl_token_metadata.so \
   #  --slots-per-epoch 32 \
   #  --quiet --reset &

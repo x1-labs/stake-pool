@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 from solders.pubkey import Pubkey
 from stake.constants import MINIMUM_DELEGATION
 
-STAKE_POOL_PROGRAM_ID = Pubkey.from_string("XPoo1BdBxH9trB4c7DpJREPZ9xRkN4avCXBUWDg2L2J")
+STAKE_POOL_PROGRAM_ID = Pubkey.from_string("XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux")
 """Public key that identifies the SPL Stake Pool program."""
 
 MAX_VALIDATORS_TO_UPDATE: int = 5

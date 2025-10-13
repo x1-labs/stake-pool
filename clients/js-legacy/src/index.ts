@@ -1178,6 +1178,7 @@ export async function stakePoolInfo(connection: Connection, stakePoolAddress: Pu
     nextSolWithdrawalFee: stakePool.account.data.nextSolWithdrawalFee,
     lastEpochPoolTokenSupply: stakePool.account.data.lastEpochPoolTokenSupply.toString(),
     lastEpochTotalLamports: stakePool.account.data.lastEpochTotalLamports.toString(),
+    maxValidatorStake: stakePool.account.data.maxValidatorStake?.toString(),
     details: {
       reserveStakeLamports: reserveStake?.lamports,
       reserveAccountStakeAddress: reserveAccountStakeAddress.toBase58(),

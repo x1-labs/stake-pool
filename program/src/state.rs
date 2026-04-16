@@ -161,7 +161,7 @@ pub struct StakePool {
     pub last_epoch_total_lamports: u64,
 
     /// Maximum stake per validator
-    /// When set, no validator can have more than this amount of stake (active + transient)
+    /// When set, no validator can have more than this amount of stake (active + in-flight)
     /// When None, there is no limit
     pub max_validator_stake: Option<u64>,
 

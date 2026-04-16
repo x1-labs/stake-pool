@@ -226,7 +226,9 @@ STAKE_POOL_LAYOUT = Struct(
     "next_sol_withdrawal_fee" / FEE_LAYOUT,
     "last_epoch_pool_token_supply" / Int64ul,
     "last_epoch_total_lamports" / Int64ul,
-    "max_validator_stake" / Int64ul
+    "max_validator_stake_option" / Int8ul,
+    "max_validator_stake" / Int64ul,
+    "_reserved" / Bytes(256),
 )
 
 DECODE_STAKE_POOL_LAYOUT = Struct(
@@ -303,7 +305,14 @@ DECODE_STAKE_POOL_LAYOUT = Struct(
         }),
     "last_epoch_pool_token_supply" / Int64ul,
     "last_epoch_total_lamports" / Int64ul,
-    "max_validator_stake" / Int64ul
+    "max_validator_stake_option" / Int8ul,
+    "max_validator_stake" / Switch(
+        lambda this: this.max_validator_stake_option,
+        {
+            0: Pass,
+            1: Int64ul,
+        }),
+    "_reserved" / Bytes(256),
 )
 
 VALIDATOR_INFO_LAYOUT = Struct(

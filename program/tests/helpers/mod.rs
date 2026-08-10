@@ -34,7 +34,7 @@ use {
         instruction, minimum_delegation,
         processor::Processor,
         state::{self, FeeType, FutureEpoch, StakePool, ValidatorList},
-        MAX_VALIDATORS_TO_UPDATE, MINIMUM_RESERVE_LAMPORTS,
+        CURRENT_STAKE_POOL_VERSION, MAX_VALIDATORS_TO_UPDATE, MINIMUM_RESERVE_LAMPORTS,
     },
     spl_token_2022_interface::{
         extension::{ExtensionType, StateWithExtensionsOwned},
@@ -2008,6 +2008,7 @@ impl StakePoolAccounts {
         let (_, stake_withdraw_bump_seed) =
             find_withdraw_authority_program_address(&id(), &self.stake_pool.pubkey());
         let stake_pool = state::StakePool {
+            version: CURRENT_STAKE_POOL_VERSION,
             account_type: state::AccountType::StakePool,
             manager: self.manager.pubkey(),
             staker: self.staker.pubkey(),
@@ -2038,6 +2039,8 @@ impl StakePoolAccounts {
             next_sol_withdrawal_fee: FutureEpoch::None,
             last_epoch_pool_token_supply: 0,
             last_epoch_total_lamports: 0,
+            max_validator_stake: None,
+            _reserved: [0; 256],
         };
         let mut validator_list = ValidatorList::new(self.max_validators);
         validator_list.validators = vec![];

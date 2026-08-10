@@ -17,8 +17,8 @@ use {
             StakeStatus, StakeWithdrawSource, ValidatorList, ValidatorListHeader,
             ValidatorStakeInfo,
         },
-        AUTHORITY_DEPOSIT, AUTHORITY_WITHDRAW, EPHEMERAL_STAKE_SEED_PREFIX, MAX_VALIDATORS_IN_POOL,
-        TRANSIENT_STAKE_SEED_PREFIX,
+        AUTHORITY_DEPOSIT, AUTHORITY_WITHDRAW, CURRENT_STAKE_POOL_VERSION,
+        EPHEMERAL_STAKE_SEED_PREFIX, MAX_VALIDATORS_IN_POOL, TRANSIENT_STAKE_SEED_PREFIX,
     },
     borsh::BorshDeserialize,
     solana_account_info::{next_account_info, AccountInfo},
@@ -856,6 +856,7 @@ impl Processor {
             &validator_list,
         )?;
 
+        stake_pool.version = CURRENT_STAKE_POOL_VERSION;
         stake_pool.account_type = AccountType::StakePool;
         stake_pool.manager = *manager_info.key;
         stake_pool.staker = *staker_info.key;
@@ -884,6 +885,8 @@ impl Processor {
         stake_pool.next_sol_withdrawal_fee = FutureEpoch::None;
         stake_pool.last_epoch_pool_token_supply = 0;
         stake_pool.last_epoch_total_lamports = 0;
+        stake_pool.max_validator_stake = None;
+        stake_pool._reserved = [0; 256];
 
         borsh::to_writer(&mut stake_pool_info.data.borrow_mut()[..], &stake_pool)
             .map_err(|e| e.into())

@@ -26,6 +26,12 @@ const TRANSIENT_STAKE_SEED_PREFIX: &[u8] = b"transient";
 /// Seed for ephemeral stake account
 const EPHEMERAL_STAKE_SEED_PREFIX: &[u8] = b"ephemeral";
 
+/// Current version written to the `version` field of [`state::StakePool`].
+///
+/// X1 fork only. Live X1 pool accounts carry this byte at offset 0, ahead of
+/// `account_type`, so it is part of the on-chain layout and must not be removed.
+pub const CURRENT_STAKE_POOL_VERSION: u8 = 1;
+
 /// Minimum amount of staked lamports required in a validator stake account to
 /// allow for merges without a mismatch on credits observed
 pub const MINIMUM_ACTIVE_STAKE: u64 = 1_000_000;

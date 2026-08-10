@@ -2,8 +2,8 @@
 
 use {
     crate::{
-        big_vec::BigVec, error::StakePoolError, MAX_WITHDRAWAL_FEE_INCREASE,
-        MAX_WITHDRAWAL_FEE_INCREASE_FACTOR, WITHDRAWAL_BASELINE_FEE,
+        big_vec::BigVec, error::StakePoolError, CURRENT_STAKE_POOL_VERSION,
+        MAX_WITHDRAWAL_FEE_INCREASE, MAX_WITHDRAWAL_FEE_INCREASE_FACTOR, WITHDRAWAL_BASELINE_FEE,
     },
     borsh::{BorshDeserialize, BorshSchema, BorshSerialize},
     bytemuck::{Pod, Zeroable},
@@ -38,9 +38,18 @@ pub enum AccountType {
 }
 
 /// Initialized program details.
+///
+/// X1 fork note: this layout intentionally diverges from upstream. `version` is
+/// prepended before `account_type`, and `max_validator_stake` / `_reserved` are
+/// appended. Live X1 pool accounts are serialized this way (see the
+/// `x1_mainnet_pool_layout` test), so field order here is consensus-critical
+/// and must not be changed or "realigned" with upstream.
 #[repr(C)]
-#[derive(Clone, Debug, Default, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
+#[derive(Clone, Debug, PartialEq, BorshDeserialize, BorshSerialize, BorshSchema)]
 pub struct StakePool {
+    /// Version of the stake pool program. This allows for future upgrades.
+    pub version: u8,
+
     /// Account type, must be `StakePool` currently
     pub account_type: AccountType,
 
@@ -154,7 +163,58 @@ pub struct StakePool {
 
     /// Last epoch's total lamports, used only for APR estimation
     pub last_epoch_total_lamports: u64,
+
+    /// Maximum stake per validator
+    /// When set, no validator can have more than this amount of stake (active +
+    /// transient) When None, there is no limit
+    pub max_validator_stake: Option<u64>,
+
+    /// Reserved space for future use
+    pub _reserved: [u8; 256],
 }
+
+/// Hand-written because `[u8; 256]` has no `Default` impl, and because `version`
+/// must default to the current layout version rather than 0.
+impl Default for StakePool {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_STAKE_POOL_VERSION,
+            account_type: AccountType::default(),
+            manager: Pubkey::default(),
+            staker: Pubkey::default(),
+            stake_deposit_authority: Pubkey::default(),
+            stake_withdraw_bump_seed: 0,
+            validator_list: Pubkey::default(),
+            reserve_stake: Pubkey::default(),
+            pool_mint: Pubkey::default(),
+            manager_fee_account: Pubkey::default(),
+            token_program_id: Pubkey::default(),
+            total_lamports: 0,
+            pool_token_supply: 0,
+            last_update_epoch: 0,
+            lockup: Lockup::default(),
+            epoch_fee: Fee::default(),
+            next_epoch_fee: FutureEpoch::None,
+            preferred_deposit_validator_vote_address: None,
+            preferred_withdraw_validator_vote_address: None,
+            stake_deposit_fee: Fee::default(),
+            stake_withdrawal_fee: Fee::default(),
+            next_stake_withdrawal_fee: FutureEpoch::None,
+            stake_referral_fee: 0,
+            sol_deposit_authority: None,
+            sol_deposit_fee: Fee::default(),
+            sol_referral_fee: 0,
+            sol_withdraw_authority: None,
+            sol_withdrawal_fee: Fee::default(),
+            next_sol_withdrawal_fee: FutureEpoch::None,
+            last_epoch_pool_token_supply: 0,
+            last_epoch_total_lamports: 0,
+            max_validator_stake: None,
+            _reserved: [0; 256],
+        }
+    }
+}
+
 impl StakePool {
     /// calculate the pool tokens that should be minted for a deposit of
     /// `stake_lamports`
@@ -1081,7 +1141,157 @@ mod test {
         solana_borsh::v1::{get_packed_len, try_from_slice_unchecked},
         solana_clock::{DEFAULT_SLOTS_PER_EPOCH, DEFAULT_S_PER_SLOT, SECONDS_PER_DAY},
         solana_native_token::LAMPORTS_PER_SOL,
+        std::str::FromStr,
     };
+
+    /// Byte-for-byte snapshot of the live X1 mainnet stake pool account
+    /// `EqpBCpgDnLepE1H3dejVbZJrRa3Cyxr2A6Qt7zEbVHPi`, captured 2026-08-10 at
+    /// slot ~70.7M, owner `XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux`.
+    const X1_MAINNET_POOL: &[u8] = include_bytes!("../tests/fixtures/x1-mainnet-stake-pool.bin");
+
+    /// Layout lock for the deployed X1 pool.
+    ///
+    /// The X1 fork prepends `version` before `account_type` and appends
+    /// `max_validator_stake` + `_reserved`, so our `StakePool` is NOT
+    /// wire-compatible with upstream's. The live pool account is already
+    /// serialized this way. If this test fails, deploying the program would
+    /// make the pool undeserializable and brick it — fix the struct, never the
+    /// test.
+    #[test]
+    fn x1_mainnet_pool_layout() {
+        // Allocated size must match what the deployed program created.
+        assert_eq!(X1_MAINNET_POOL.len(), 877);
+        assert_eq!(get_packed_len::<StakePool>(), 877);
+
+        let pool = try_from_slice_unchecked::<StakePool>(X1_MAINNET_POOL)
+            .expect("live X1 mainnet pool account must deserialize");
+
+        // Fork-specific framing.
+        assert_eq!(pool.version, CURRENT_STAKE_POOL_VERSION);
+        assert_eq!(pool.account_type, AccountType::StakePool);
+        assert_eq!(pool.max_validator_stake, None);
+        assert_eq!(pool._reserved, [0u8; 256]);
+        assert!(pool.is_valid());
+
+        // Anchor fields against the recorded foundation-pool run log. These
+        // pin the *offsets*: if the prepended version byte were dropped, every
+        // pubkey below would shift by one byte and fail.
+        let expect = |s: &str| Pubkey::from_str(s).unwrap();
+        assert_eq!(
+            pool.manager,
+            expect("4MB864w1ijdZXZJHhTpMet5pmDxgqK8bvnLJYL4tZRjW")
+        );
+        assert_eq!(
+            pool.staker,
+            expect("ksFH7jd46CVjDBDj8F6yEr6Xbk21q54N9cPJhhiA6cZ")
+        );
+        assert_eq!(
+            pool.validator_list,
+            expect("2fg7PRAYkfj2ghcd7W4nsWMa2CzQ1Q83Br6cXc9UUgHc")
+        );
+        assert_eq!(
+            pool.reserve_stake,
+            expect("BAwSfPuDG9Y8QQizKjx2NKuP2SBcEHN5ZGzWaLwxoNFk")
+        );
+        assert_eq!(
+            pool.pool_mint,
+            expect("SwyFnCdFptC8V7ZUkGNBCk1x716psoQ8nPESBMidVes")
+        );
+
+        // Fees recorded at pool creation: epoch 1%, withdrawal 2%, deposit 3%.
+        assert_eq!(
+            pool.epoch_fee,
+            Fee {
+                numerator: 1,
+                denominator: 100
+            }
+        );
+        assert_eq!(
+            pool.stake_withdrawal_fee,
+            Fee {
+                numerator: 2,
+                denominator: 100
+            }
+        );
+        assert_eq!(
+            pool.sol_deposit_fee,
+            Fee {
+                numerator: 3,
+                denominator: 100
+            }
+        );
+        assert_eq!(pool.stake_referral_fee, 0);
+
+        // `get_packed_len` is the *maximum* encoding, with every Option
+        // populated; the account is allocated at that size. This pool encodes
+        // shorter (693 bytes) because seven Options are None, leaving 184 bytes
+        // of zero slack:
+        //   next_epoch_fee +16, preferred_deposit +32, preferred_withdraw +32,
+        //   next_stake_withdrawal_fee +16, sol_deposit_authority +32,
+        //   sol_withdraw_authority +32, next_sol_withdrawal_fee +16,
+        //   max_validator_stake +8  =  184
+        let reserialized = borsh::to_vec(&pool).unwrap();
+        assert_eq!(reserialized.len(), 693);
+        assert_eq!(
+            reserialized.as_slice(),
+            &X1_MAINNET_POOL[..reserialized.len()],
+            "re-serialized pool diverges from on-chain bytes"
+        );
+        assert!(
+            X1_MAINNET_POOL[reserialized.len()..]
+                .iter()
+                .all(|&b| b == 0),
+            "trailing allocation slack must be zero"
+        );
+
+        // Pin the concrete offset of the fork's appended fields.
+        assert_eq!(X1_MAINNET_POOL[436], 0, "max_validator_stake Option tag");
+        assert!(
+            X1_MAINNET_POOL[437..693].iter().all(|&b| b == 0),
+            "_reserved"
+        );
+    }
+
+    /// The `version` byte must sit at offset 0, ahead of `account_type`.
+    /// Upstream has `account_type` at offset 0, so this is the single byte that
+    /// makes our layout incompatible with upstream's — and it is exactly what
+    /// the live pool depends on.
+    #[test]
+    fn x1_version_byte_precedes_account_type() {
+        assert_eq!(X1_MAINNET_POOL[0], CURRENT_STAKE_POOL_VERSION);
+        assert_eq!(X1_MAINNET_POOL[1], AccountType::StakePool as u8);
+
+        let pool = StakePool {
+            version: 7,
+            account_type: AccountType::StakePool,
+            ..StakePool::default()
+        };
+        let bytes = borsh::to_vec(&pool).unwrap();
+        assert_eq!(bytes[0], 7, "version must serialize first");
+        assert_eq!(bytes[1], AccountType::StakePool as u8);
+    }
+
+    /// Setting a cap later grows the encoding by 8 bytes (`None` -> `Some`).
+    /// The live pool is allocated at `get_packed_len`, so this must still fit
+    /// without a realloc — otherwise `SetMaxValidatorStake` would fail on the
+    /// existing pool.
+    #[test]
+    fn x1_max_validator_stake_fits_allocation() {
+        let mut pool = StakePool::default();
+        let without = borsh::to_vec(&pool).unwrap().len();
+        pool.max_validator_stake = Some(u64::MAX);
+        let with = borsh::to_vec(&pool).unwrap().len();
+
+        assert_eq!(without, 693);
+        assert_eq!(with, 701);
+        assert_eq!(with - without, 8);
+        assert!(
+            with <= get_packed_len::<StakePool>(),
+            "setting a cap must fit the allocated account without realloc"
+        );
+        // And it fits the actual live account.
+        assert!(with <= X1_MAINNET_POOL.len());
+    }
 
     fn uninitialized_validator_list() -> ValidatorList {
         ValidatorList {

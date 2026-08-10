@@ -162,7 +162,7 @@ pub fn find_ephemeral_stake_program_address(
     )
 }
 
-solana_pubkey::declare_id!("SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy");
+solana_pubkey::declare_id!("XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux");
 /// Program id for devnet
 pub mod devnet {
     solana_pubkey::declare_id!("DPoo15wWDqpPJJtS2MUZ49aRxqz5ZaaJCJP4z8bLuib");

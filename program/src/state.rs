@@ -1149,6 +1149,97 @@ mod test {
     /// slot ~70.7M, owner `XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux`.
     const X1_MAINNET_POOL: &[u8] = include_bytes!("../tests/fixtures/x1-mainnet-stake-pool.bin");
 
+    /// Used prefix of the live X1 mainnet validator list account
+    /// `2fg7PRAYkfj2ghcd7W4nsWMa2CzQ1Q83Br6cXc9UUgHc`, captured 2026-08-10:
+    /// the 9-byte header plus 12 `ValidatorStakeInfo` entries. The real account
+    /// is [`X1_MAINNET_VALIDATOR_LIST_ACCOUNT_LEN`] bytes (1000 slots); the
+    /// remainder was verified to be entirely zero and is trimmed here rather
+    /// than committing 72KB of padding.
+    const X1_MAINNET_VALIDATOR_LIST: &[u8] =
+        include_bytes!("../tests/fixtures/x1-mainnet-validator-list.bin");
+
+    /// Allocated size of the live validator list account.
+    const X1_MAINNET_VALIDATOR_LIST_ACCOUNT_LEN: usize = 73_009;
+
+    /// The 12 foundation validators, in list order, per the run log.
+    const X1_FOUNDATION_VOTE_ACCOUNTS: [&str; 12] = [
+        "9v8bGQk9JhUhbxGock4KAhUfzCe9VtJBX15fNDQY4mkw",
+        "Hdcj25JfB7oPAwpCiedYRKUBYFBMGuw4GrQ9JZF5112",
+        "2aoje61DYarSYEb4VgCStpkivfZqyo5DQ4vkY9iq3SiU",
+        "9kg4suZeNNJ4ytZQUtzryJY8KQTFL5PvfMjnioTDZdXi",
+        "DWNBX8QrjefyeHY2VFwRvVWp8nPUEoLHXTm3S7bu1d7E",
+        "F16B8rLuY5B1S3Bj9Gyj7Hc9hxoFe894tWbU4t57uWDj",
+        "2Rr9ocgMFfVcuxtWhQ6s4dukCiViG6CuguFNzgoGmuRb",
+        "31MDFmh6QDYFRbytMLnJdUoGtznLMfojtrQzzav4to5r",
+        "2EstMAjQXebLQtoWUP4KQfvk7KhnreBpbXjnxotZ5xGS",
+        "HsMbWVLNxCRFokzaBzTRmsjc5Z4xQqd4W7YdajpQrZDE",
+        "6Wf81YuCHu3j7xJupCq5mxDWz8seuNkybyT9riVm5FeA",
+        "BYAt5rm4CXnp3C5Hgejri2wQdErMBRjDFVzqmFopDJRB",
+    ];
+
+    /// Layout lock for the deployed X1 validator list.
+    ///
+    /// We never changed `ValidatorList`, but upstream did: `is_not_removed` was
+    /// replaced by `is_removed`/`is_active`, and the raw-offset accessors
+    /// (`memcmp_pubkey` at bytes 41..73, `status` at byte 40) are how the
+    /// program scans the list during update-balance. This test runs those
+    /// accessors against the real account so a wrong offset or a changed status
+    /// interpretation is caught before it can mis-account the pool.
+    #[test]
+    fn x1_mainnet_validator_list_layout() {
+        assert_eq!(ValidatorStakeInfo::LEN, 73);
+        assert_eq!(
+            X1_MAINNET_VALIDATOR_LIST.len(),
+            9 + 12 * ValidatorStakeInfo::LEN
+        );
+        assert_eq!(
+            ValidatorList::calculate_max_validators(X1_MAINNET_VALIDATOR_LIST_ACCOUNT_LEN),
+            1000
+        );
+
+        let list = try_from_slice_unchecked::<ValidatorList>(X1_MAINNET_VALIDATOR_LIST)
+            .expect("live X1 mainnet validator list must deserialize");
+
+        assert_eq!(list.header.account_type, AccountType::ValidatorList);
+        assert_eq!(list.header.max_validators, 1000);
+        assert!(list.header.is_valid());
+        assert_eq!(list.validators.len(), 12);
+
+        for (i, expected) in X1_FOUNDATION_VOTE_ACCOUNTS.iter().enumerate() {
+            let info = &list.validators[i];
+            let expected = Pubkey::from_str(expected).unwrap();
+            assert_eq!(info.vote_account_address, expected, "validator {i}");
+            assert_eq!(info.status, StakeStatus::Active.into(), "validator {i}");
+
+            // Exercise the raw-offset accessors on this entry's actual bytes.
+            let off = 9 + i * ValidatorStakeInfo::LEN;
+            let raw = &X1_MAINNET_VALIDATOR_LIST[off..off + ValidatorStakeInfo::LEN];
+            assert!(
+                ValidatorStakeInfo::memcmp_pubkey(raw, &expected),
+                "memcmp {i}"
+            );
+            assert!(ValidatorStakeInfo::is_active(raw), "is_active {i}");
+            assert!(!ValidatorStakeInfo::is_removed(raw), "is_removed {i}");
+        }
+
+        // Validator 3 had an in-flight increase at capture time; keeping this
+        // asserted means the fixture still exercises the transient-stake path.
+        assert_eq!(
+            u64::from(list.validators[3].transient_stake_lamports),
+            10_002_282_880
+        );
+        assert!(list
+            .validators
+            .iter()
+            .all(|v| u64::from(v.active_stake_lamports) == 3_282_880));
+
+        // Round-trip must reproduce the on-chain bytes exactly.
+        assert_eq!(
+            borsh::to_vec(&list).unwrap().as_slice(),
+            X1_MAINNET_VALIDATOR_LIST
+        );
+    }
+
     /// Layout lock for the deployed X1 pool.
     ///
     /// The X1 fork prepends `version` before `account_type` and appends

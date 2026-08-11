@@ -733,6 +733,18 @@ pub enum StakePoolInstruction {
         /// Minimum amount of lamports that must be received
         minimum_lamports_out: u64,
     },
+
+    ///   (Manager only) Update the maximum stake per validator
+    ///
+    ///   X1 fork only. Appended last so upstream's instruction discriminants
+    ///   keep their canonical values; do not move it.
+    ///
+    ///   0. `[w]` Stake pool
+    ///   1. `[s]` Manager
+    SetMaxValidatorStake {
+        /// Maximum stake per validator, or `None` to remove the limit
+        max_stake: Option<u64>,
+    },
 }
 
 /// Creates an `Initialize` instruction.
@@ -2640,5 +2652,61 @@ pub fn create_token_metadata(
         accounts,
         data: borsh::to_vec(&StakePoolInstruction::CreateTokenMetadata { name, symbol, uri })
             .unwrap(),
+    }
+}
+
+/// Creates a `SetMaxValidatorStake` instruction (X1 fork only).
+pub fn set_max_validator_stake(
+    program_id: &Pubkey,
+    stake_pool: &Pubkey,
+    manager: &Pubkey,
+    max_stake: Option<u64>,
+) -> Instruction {
+    let accounts = vec![
+        AccountMeta::new(*stake_pool, false),
+        AccountMeta::new_readonly(*manager, true),
+    ];
+    Instruction {
+        program_id: *program_id,
+        accounts,
+        data: borsh::to_vec(&StakePoolInstruction::SetMaxValidatorStake { max_stake }).unwrap(),
+    }
+}
+
+#[cfg(test)]
+mod x1_test {
+    use super::*;
+
+    /// The X1 program deployed on mainnet encodes `SetMaxValidatorStake` as
+    /// instruction 27. Upstream ends at 26 (`WithdrawSolWithSlippage`), so
+    /// appending keeps our discriminant stable and existing X1 clients keep
+    /// working. If upstream ever adds a variant, this test fails — and the new
+    /// upstream variant must then be placed *before* ours to keep 27 ours.
+    #[test]
+    fn set_max_validator_stake_discriminant_is_stable() {
+        let data =
+            borsh::to_vec(&StakePoolInstruction::SetMaxValidatorStake { max_stake: None }).unwrap();
+        assert_eq!(data, vec![27, 0]);
+
+        let data =
+            borsh::to_vec(&StakePoolInstruction::SetMaxValidatorStake { max_stake: Some(7) })
+                .unwrap();
+        assert_eq!(data, vec![27, 1, 7, 0, 0, 0, 0, 0, 0, 0]);
+
+        // Upstream's last variant must remain 26.
+        let upstream_last = borsh::to_vec(&StakePoolInstruction::WithdrawSolWithSlippage {
+            pool_tokens_in: 0,
+            minimum_lamports_out: 0,
+        })
+        .unwrap();
+        assert_eq!(upstream_last[0], 26);
+
+        // Round-trips through the same wire format the deployed program uses.
+        let decoded =
+            StakePoolInstruction::try_from_slice(&[27, 1, 7, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+        assert!(matches!(
+            decoded,
+            StakePoolInstruction::SetMaxValidatorStake { max_stake: Some(7) }
+        ));
     }
 }

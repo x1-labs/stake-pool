@@ -170,6 +170,12 @@ pub enum StakePoolError {
     /// The stake pool has too many validators in the pool
     #[error("The stake pool has too many validators in the pool")]
     TooManyValidatorsInPool,
+    /// Validator stake would exceed maximum allowed stake limit
+    ///
+    /// X1 fork only. Appended last so upstream's error discriminants keep their
+    /// canonical values; do not move it.
+    #[error("Validator stake would exceed maximum allowed stake limit")]
+    ExceedsMaxValidatorStake,
 }
 impl From<StakePoolError> for ProgramError {
     fn from(e: StakePoolError) -> Self {
@@ -247,6 +253,32 @@ impl ToStr for StakePoolError {
             Self::MissingRequiredSysvar => "Error: Missing required sysvar account",
             Self::EpochRewardDistributionInProgress => "Error: Epoch reward distribution is currently in progress, stakes are still being updated",
             Self::TooManyValidatorsInPool => "Error: The stake pool has too many validators in the pool",
+            Self::ExceedsMaxValidatorStake => "Error: Validator stake would exceed maximum allowed stake limit",
         }
+    }
+}
+
+#[cfg(test)]
+mod x1_test {
+    use super::*;
+
+    /// `ExceedsMaxValidatorStake` is appended last, so upstream's error codes
+    /// keep their canonical values. This shifts our error from 43 (as encoded
+    /// by the program currently deployed on X1 mainnet) to 45, because upstream
+    /// claimed 43 and 44 while we were behind.
+    ///
+    /// This is safe only because the cap has never been set on mainnet
+    /// (`max_validator_stake` is `None`), so the old code was never emitted.
+    #[test]
+    fn error_discriminants_match_upstream() {
+        assert_eq!(StakePoolError::MissingRequiredSysvar as u32, 42);
+        assert_eq!(StakePoolError::EpochRewardDistributionInProgress as u32, 43);
+        assert_eq!(StakePoolError::TooManyValidatorsInPool as u32, 44);
+        assert_eq!(StakePoolError::ExceedsMaxValidatorStake as u32, 45);
+
+        assert_eq!(
+            ProgramError::from(StakePoolError::ExceedsMaxValidatorStake),
+            ProgramError::Custom(45)
+        );
     }
 }

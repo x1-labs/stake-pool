@@ -2004,6 +2004,36 @@ impl StakePoolAccounts {
             .err()
     }
 
+    /// X1 fork only. `signer` is the account signing as manager, so tests can
+    /// exercise the unauthorized case by passing something else.
+    pub async fn set_max_validator_stake(
+        &self,
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        recent_blockhash: &Hash,
+        signer: &Keypair,
+        max_stake: Option<u64>,
+    ) -> Option<TransportError> {
+        let mut instructions = vec![instruction::set_max_validator_stake(
+            &id(),
+            &self.stake_pool.pubkey(),
+            &signer.pubkey(),
+            max_stake,
+        )];
+        self.maybe_add_compute_budget_instruction(&mut instructions);
+        let transaction = Transaction::new_signed_with_payer(
+            &instructions,
+            Some(&payer.pubkey()),
+            &[payer, signer],
+            *recent_blockhash,
+        );
+        banks_client
+            .process_transaction(transaction)
+            .await
+            .map_err(|e| e.into())
+            .err()
+    }
+
     pub fn state(&self) -> (state::StakePool, state::ValidatorList) {
         let (_, stake_withdraw_bump_seed) =
             find_withdraw_authority_program_address(&id(), &self.stake_pool.pubkey());

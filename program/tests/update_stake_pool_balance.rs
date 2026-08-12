@@ -1,6 +1,4 @@
 #![allow(clippy::arithmetic_side_effects)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
@@ -10,9 +8,9 @@ use {
     solana_sdk::{
         hash::Hash,
         signature::{Keypair, Signer},
-        stake,
         transaction::TransactionError,
     },
+    solana_stake_interface::state::StakeStateV2,
     spl_stake_pool::{error::StakePoolError, state::StakePool, MINIMUM_RESERVE_LAMPORTS},
     std::num::NonZeroU32,
 };
@@ -40,7 +38,7 @@ async fn setup(
         .unwrap();
 
     let rent = context.banks_client.get_rent().await.unwrap();
-    let stake_rent = rent.minimum_balance(std::mem::size_of::<stake::state::StakeStateV2>());
+    let stake_rent = rent.minimum_balance(std::mem::size_of::<StakeStateV2>());
     let current_minimum_delegation = stake_pool_get_minimum_delegation(
         &mut context.banks_client,
         &context.payer,

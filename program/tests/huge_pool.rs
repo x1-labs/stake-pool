@@ -1,17 +1,16 @@
 #![allow(clippy::arithmetic_side_effects)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
     helpers::*,
-    solana_program::{borsh1::try_from_slice_unchecked, pubkey::Pubkey, stake},
+    solana_program::{borsh1::try_from_slice_unchecked, pubkey::Pubkey},
     solana_program_test::*,
     solana_sdk::{
         native_token::LAMPORTS_PER_SOL,
         signature::{Keypair, Signer},
         transaction::Transaction,
     },
+    solana_stake_interface as stake,
     spl_stake_pool::{
         find_stake_program_address, find_transient_stake_program_address, id,
         instruction::{self, PreferredValidatorType},
@@ -450,6 +449,13 @@ async fn add_validator_to_pool(max_validators: u32) {
     let (mut context, stake_pool_accounts, _, test_vote_address, _, _, _) =
         setup(max_validators, max_validators - 1, STAKE_AMOUNT).await;
 
+    let minimum_delegation = stake_pool_get_minimum_delegation(
+        &mut context.banks_client,
+        &context.payer,
+        &context.last_blockhash,
+    )
+    .await;
+
     let last_index = max_validators as usize - 1;
     let stake_pool_pubkey = stake_pool_accounts.stake_pool.pubkey();
     let (stake_address, _) =
@@ -479,7 +485,7 @@ async fn add_validator_to_pool(max_validators: u32) {
     assert_eq!(last_element.status, StakeStatus::Active.into());
     assert_eq!(
         u64::from(last_element.active_stake_lamports),
-        LAMPORTS_PER_SOL + STAKE_ACCOUNT_RENT_EXEMPTION
+        minimum_delegation + STAKE_ACCOUNT_RENT_EXEMPTION
     );
     assert_eq!(u64::from(last_element.transient_stake_lamports), 0);
     assert_eq!(last_element.vote_account_address, test_vote_address);
@@ -517,7 +523,7 @@ async fn add_validator_to_pool(max_validators: u32) {
     assert_eq!(last_element.status, StakeStatus::Active.into());
     assert_eq!(
         u64::from(last_element.active_stake_lamports),
-        LAMPORTS_PER_SOL + STAKE_ACCOUNT_RENT_EXEMPTION
+        minimum_delegation + STAKE_ACCOUNT_RENT_EXEMPTION
     );
     assert_eq!(
         u64::from(last_element.transient_stake_lamports),

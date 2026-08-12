@@ -16,16 +16,20 @@ create_keypair () {
 }
 
 setup_test_validator() {
+  # X1 fork: load the locally built program rather than cloning it from a
+  # cluster. The X1 program id only exists on X1, so cloning it from Solana
+  # mainnet-beta cannot work, and this also tests the binary you just built.
+  # Run `cargo build-sbf` in ../../../program first.
   solana-test-validator \
-    --clone-upgradeable-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux \
-    --clone-upgradeable-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s \
-    --url https://api.mainnet-beta.solana.com \
+    --bpf-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux ../../../target/deploy/spl_stake_pool.so \
+    --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s ../../../program/tests/fixtures/mpl_token_metadata.so \
     --slots-per-epoch 32 \
     --quiet --reset &
-  # Uncomment to use a locally built stake program
+  # Uncomment to clone the deployed program from X1 mainnet instead.
   #solana-test-validator \
-  #  --bpf-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux ../../../target/deploy/spl_stake_pool.so \
-  #  --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s ../../program/tests/fixtures/mpl_token_metadata.so \
+  #  --clone-upgradeable-program XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux \
+  #  --url https://rpc.mainnet.x1.xyz \
+  #  --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s ../../../program/tests/fixtures/mpl_token_metadata.so \
   #  --slots-per-epoch 32 \
   #  --quiet --reset &
   pid=$!
@@ -49,7 +53,6 @@ create_vote_accounts () {
   done
 }
 
-echo validator file:  $validator_file
 
 echo "Setup keys directory and clear old validator list file if found"
 keys_dir=keys

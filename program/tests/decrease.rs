@@ -1,19 +1,18 @@
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::items_after_test_module)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
     assert_matches::assert_matches,
     bincode::deserialize,
     helpers::*,
-    solana_program::{clock::Epoch, instruction::InstructionError, pubkey::Pubkey, stake},
+    solana_program::{clock::Epoch, instruction::InstructionError, pubkey::Pubkey},
     solana_program_test::*,
     solana_sdk::{
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
     },
+    solana_stake_interface as stake,
     spl_stake_pool::{
         error::StakePoolError, find_ephemeral_stake_program_address,
         find_transient_stake_program_address, id, instruction, MINIMUM_RESERVE_LAMPORTS,
@@ -40,7 +39,7 @@ async fn setup() -> (
     .await;
 
     let stake_pool_accounts = StakePoolAccounts::default();
-    let reserve_lamports = MINIMUM_RESERVE_LAMPORTS + stake_rent + current_minimum_delegation;
+    let reserve_lamports = MINIMUM_RESERVE_LAMPORTS + stake_rent * 3 + current_minimum_delegation;
     stake_pool_accounts
         .initialize_stake_pool(
             &mut context.banks_client,
@@ -508,8 +507,12 @@ async fn fail_with_small_lamport_amount(instruction_type: DecreaseInstruction) {
     let (mut context, stake_pool_accounts, validator_stake, _deposit_info, _decrease_lamports, _) =
         setup().await;
 
-    let rent = context.banks_client.get_rent().await.unwrap();
-    let lamports = rent.minimum_balance(std::mem::size_of::<stake::state::StakeStateV2>());
+    let current_minimum_delegation = stake_pool_get_minimum_delegation(
+        &mut context.banks_client,
+        &context.payer,
+        &context.last_blockhash,
+    )
+    .await;
 
     let error = stake_pool_accounts
         .decrease_validator_stake_either(
@@ -518,7 +521,7 @@ async fn fail_with_small_lamport_amount(instruction_type: DecreaseInstruction) {
             &context.last_blockhash,
             &validator_stake.stake_account,
             &validator_stake.transient_stake_account,
-            lamports,
+            current_minimum_delegation - 1,
             validator_stake.transient_stake_seed,
             instruction_type,
         )
@@ -607,7 +610,7 @@ async fn fail_additional_with_increasing() {
 
     // warp forward to activation
     let first_normal_slot = context.genesis_config().epoch_schedule.first_normal_slot;
-    context.warp_to_slot(first_normal_slot + 1).unwrap();
+    context.warp_to_slot(first_normal_slot + 5).unwrap();
     let last_blockhash = context
         .banks_client
         .get_new_latest_blockhash(&context.last_blockhash)
@@ -657,5 +660,57 @@ async fn fail_additional_with_increasing() {
             _,
             InstructionError::Custom(code)
         ) if code == StakePoolError::WrongStakeStake as u32
+    );
+}
+
+#[test_case(DecreaseInstruction::Additional; "additional")]
+#[test_case(DecreaseInstruction::Reserve; "reserve")]
+#[test_case(DecreaseInstruction::Deprecated; "deprecated")]
+#[tokio::test]
+async fn fail_validator_marked_for_removal_decrease_stake(instruction_type: DecreaseInstruction) {
+    let (
+        mut context,
+        stake_pool_accounts,
+        validator_stake,
+        _deposit_info,
+        decrease_lamports,
+        _reserve_lamports,
+    ) = setup().await;
+
+    // First, remove the validator from the pool to mark it for removal
+    let error = stake_pool_accounts
+        .remove_validator_from_pool(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &validator_stake.stake_account,
+            &validator_stake.transient_stake_account,
+        )
+        .await;
+    assert!(error.is_none(), "Failed to remove validator: {:?}", error);
+
+    // Now attempt to decrease stake on the removed validator - this should fail
+    let error = stake_pool_accounts
+        .decrease_validator_stake_either(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &validator_stake.stake_account,
+            &validator_stake.transient_stake_account,
+            decrease_lamports,
+            validator_stake.transient_stake_seed,
+            instruction_type,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Should fail with ValidatorNotFound error
+    assert_matches!(
+        error,
+        TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code)
+        ) if code == StakePoolError::ValidatorNotFound as u32
     );
 }

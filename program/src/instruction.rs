@@ -2708,5 +2708,24 @@ mod x1_test {
             decoded,
             StakePoolInstruction::SetMaxValidatorStake { max_stake: Some(7) }
         ));
+        assert!(matches!(
+            StakePoolInstruction::try_from_slice(&[27, 0]).unwrap(),
+            StakePoolInstruction::SetMaxValidatorStake { max_stake: None }
+        ));
+    }
+
+    /// `Processor::process` decodes with `try_from_slice`, which requires the
+    /// entire buffer to be consumed. `None` therefore encodes to exactly two
+    /// bytes, and a client that always emits a fixed-width 10-byte payload
+    /// fails when clearing the cap. This pins the constraint the JS and Python
+    /// clients have to satisfy.
+    #[test]
+    fn set_max_validator_stake_none_rejects_trailing_bytes() {
+        // What a naive fixed-width client encoder emits for `None`.
+        let fixed_width = [27u8, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert!(
+            StakePoolInstruction::try_from_slice(&fixed_width).is_err(),
+            "trailing bytes must be rejected, so clients must emit 2 bytes for None"
+        );
     }
 }

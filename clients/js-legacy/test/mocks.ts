@@ -6,8 +6,11 @@ import { ValidatorListLayout, ValidatorStakeInfoStatus } from '../src/layouts';
 
 export const CONSTANTS = {
   poolTokenAccount: new PublicKey('GQkqTamwqjaNDfsbNm7r3aXPJ4oTSqKC3d5t2PF9Smqd'),
+  // Program-derived, so it moves with STAKE_POOL_PROGRAM_ID. This is the X1
+  // value; it differs from upstream's because our program id differs. If the
+  // program id ever changes again, re-derive rather than hand-editing.
   validatorStakeAccountAddress: new PublicKey(
-    new BN('69184b7f1bc836271c4ac0e29e53eb38a38ea0e7bcde693c45b30d1592a5a678', 'hex'),
+    new BN('8c2899cbb34f4d86298033a61c588a87e47763651168bf7c88ed9fa599bf562f', 'hex'),
   ),
 };
 
@@ -71,6 +74,7 @@ export const stakePoolMock = {
   },
   lastEpochPoolTokenSupply: new BN(0),
   lastEpochTotalLamports: new BN(0),
+  maxValidatorStake: null,
 };
 
 export const validatorListMock = {

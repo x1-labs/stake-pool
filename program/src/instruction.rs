@@ -736,7 +736,7 @@ pub enum StakePoolInstruction {
 
     ///   (Manager only) Update the maximum stake per validator
     ///
-    ///   X1 fork only. Appended last so upstream's instruction discriminants
+    ///   X1 fork only. Appended last so the upstream instruction discriminants
     ///   keep their canonical values; do not move it.
     ///
     ///   0. `[w]` Stake pool
@@ -2680,7 +2680,7 @@ mod x1_test {
     /// The X1 program deployed on mainnet encodes `SetMaxValidatorStake` as
     /// instruction 27. Upstream ends at 26 (`WithdrawSolWithSlippage`), so
     /// appending keeps our discriminant stable and existing X1 clients keep
-    /// working. If upstream ever adds a variant, this test fails — and the new
+    /// working. If upstream ever adds a variant, this test fails -- and the new
     /// upstream variant must then be placed *before* ours to keep 27 ours.
     #[test]
     fn set_max_validator_stake_discriminant_is_stable() {

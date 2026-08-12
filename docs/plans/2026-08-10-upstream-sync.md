@@ -495,15 +495,20 @@ constraint, pinned by a test.
   decode, checks account-type discrimination survives a version bump, and
   verifies the instruction encoding including `u64::MAX` and values above 2^53.
 
-> ⚠️ **The js-legacy jest suite does not run, on upstream as well as here.**
-> jest 30 against ts-jest 29 throws
-> `this._moduleMocker.clearMocksOnScope is not a function` before any test
-> executes. Confirmed pre-existing by stashing every X1 change and running
-> against pristine `upstream/main`, where it fails identically. Fixing it means
-> a jest/ts-jest dependency bump that should be decided on its own merits, so it
-> was left alone and `verify-x1` covers the X1-specific surface in the meantime.
-> **This is the one real gap in Phase 2** — upstream's own JS tests, including
-> the `decodeDepositSol` fix in `40ce735`, are currently unexercised.
+> **Correction.** An earlier revision of this plan claimed the js-legacy jest
+> suite could not run, based on a local
+> `this._moduleMocker.clearMocksOnScope is not a function` failure. That was a
+> stale local `node_modules`, not a real breakage — a clean
+> `pnpm install --frozen-lockfile` (what CI does) resolves it, and the suite
+> runs fine. The two failures CI reported were real defects in this sync, now
+> fixed: `stakePoolMock` was missing `maxValidatorStake: null`, and
+> `CONSTANTS.validatorStakeAccountAddress` is program-derived and still held
+> the upstream-derived value. All 26 tests pass.
+>
+> `scripts/verify-x1.mjs` (`pnpm verify-x1`) is kept as a complement, not a
+> substitute: jest runs against mocks, while that script runs the built bundle
+> against real X1 mainnet bytes, catching layout drift that code and mocks
+> could agree on.
 
 ---
 

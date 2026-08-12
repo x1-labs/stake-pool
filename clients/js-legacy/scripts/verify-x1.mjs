@@ -2,11 +2,10 @@
 // mainnet account bytes committed under program/tests/fixtures, plus the
 // on-chain instruction encoding.
 //
-// This exists as a standalone script rather than a jest test because the jest
-// suite in this package does not currently run: jest 30 against ts-jest 29
-// fails with `this._moduleMocker.clearMocksOnScope is not a function` before
-// any test executes. That breakage predates the X1 fork sync and is unrelated
-// to it. Fold these checks into jest once that is fixed.
+// This complements the jest suite rather than replacing it: jest exercises the
+// client against mocks, while this runs the built bundle against real bytes
+// pulled from X1 mainnet, so a layout drift that both the code and the mocks
+// agree on is still caught.
 //
 // Usage: pnpm build && pnpm verify-x1
 import fs from 'fs';

@@ -172,7 +172,7 @@ pub enum StakePoolError {
     TooManyValidatorsInPool,
     /// Validator stake would exceed maximum allowed stake limit
     ///
-    /// X1 fork only. Appended last so upstream's error discriminants keep their
+    /// X1 fork only. Appended last so the upstream error discriminants keep their
     /// canonical values; do not move it.
     #[error("Validator stake would exceed maximum allowed stake limit")]
     ExceedsMaxValidatorStake,
@@ -262,7 +262,7 @@ impl ToStr for StakePoolError {
 mod x1_test {
     use super::*;
 
-    /// `ExceedsMaxValidatorStake` is appended last, so upstream's error codes
+    /// `ExceedsMaxValidatorStake` is appended last, so the upstream error codes
     /// keep their canonical values. This shifts our error from 43 (as encoded
     /// by the program currently deployed on X1 mainnet) to 45, because upstream
     /// claimed 43 and 44 while we were behind.

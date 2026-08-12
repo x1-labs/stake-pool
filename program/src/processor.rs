@@ -886,7 +886,7 @@ impl Processor {
         stake_pool.last_epoch_pool_token_supply = 0;
         stake_pool.last_epoch_total_lamports = 0;
         stake_pool.max_validator_stake = None;
-        stake_pool._reserved = [0; 256];
+        stake_pool.reserved = [0; 256];
 
         borsh::to_writer(&mut stake_pool_info.data.borrow_mut()[..], &stake_pool)
             .map_err(|e| e.into())

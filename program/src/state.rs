@@ -40,7 +40,7 @@ pub enum AccountType {
 /// Initialized program details.
 ///
 /// X1 fork note: this layout intentionally diverges from upstream. `version` is
-/// prepended before `account_type`, and `max_validator_stake` / `_reserved` are
+/// prepended before `account_type`, and `max_validator_stake` / `reserved` are
 /// appended. Live X1 pool accounts are serialized this way (see the
 /// `x1_mainnet_pool_layout` test), so field order here is consensus-critical
 /// and must not be changed or "realigned" with upstream.
@@ -164,13 +164,14 @@ pub struct StakePool {
     /// Last epoch's total lamports, used only for APR estimation
     pub last_epoch_total_lamports: u64,
 
-    /// Maximum stake per validator
-    /// When set, no validator can have more than this amount of stake (active +
-    /// transient) When None, there is no limit
+    /// Maximum stake per validator.
+    ///
+    /// When set, no validator can hold more than this amount of stake, counting
+    /// active and transient together. When `None`, there is no limit.
     pub max_validator_stake: Option<u64>,
 
     /// Reserved space for future use
-    pub _reserved: [u8; 256],
+    pub reserved: [u8; 256],
 }
 
 /// Hand-written because `[u8; 256]` has no `Default` impl, and because `version`
@@ -210,7 +211,7 @@ impl Default for StakePool {
             last_epoch_pool_token_supply: 0,
             last_epoch_total_lamports: 0,
             max_validator_stake: None,
-            _reserved: [0; 256],
+            reserved: [0; 256],
         }
     }
 }
@@ -1145,8 +1146,8 @@ mod test {
     };
 
     /// Byte-for-byte snapshot of the live X1 mainnet stake pool account
-    /// `EqpBCpgDnLepE1H3dejVbZJrRa3Cyxr2A6Qt7zEbVHPi`, captured 2026-08-10 at
-    /// slot ~70.7M, owner `XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux`.
+    /// `EqpBCpgDnLepE1H3dejVbZJrRa3Cyxr2A6Qt7zEbVHPi`, captured 2026-08-10 near
+    /// slot 70700000, owner `XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux`.
     const X1_MAINNET_POOL: &[u8] = include_bytes!("../tests/fixtures/x1-mainnet-stake-pool.bin");
 
     /// Used prefix of the live X1 mainnet validator list account
@@ -1154,7 +1155,7 @@ mod test {
     /// the 9-byte header plus 12 `ValidatorStakeInfo` entries. The real account
     /// is [`X1_MAINNET_VALIDATOR_LIST_ACCOUNT_LEN`] bytes (1000 slots); the
     /// remainder was verified to be entirely zero and is trimmed here rather
-    /// than committing 72KB of padding.
+    /// than committing 72 kilobytes of padding.
     const X1_MAINNET_VALIDATOR_LIST: &[u8] =
         include_bytes!("../tests/fixtures/x1-mainnet-validator-list.bin");
 
@@ -1242,12 +1243,12 @@ mod test {
 
     /// Layout lock for the deployed X1 pool.
     ///
-    /// The X1 fork prepends `version` before `account_type` and appends
-    /// `max_validator_stake` + `_reserved`, so our `StakePool` is NOT
-    /// wire-compatible with upstream's. The live pool account is already
+    /// The X1 fork prepends `version` before `account_type` and appends both
+    /// `max_validator_stake` and `reserved`, so our `StakePool` is NOT
+    /// wire-compatible with the upstream one. The live pool account is already
     /// serialized this way. If this test fails, deploying the program would
-    /// make the pool undeserializable and brick it — fix the struct, never the
-    /// test.
+    /// leave the pool impossible to decode, bricking it. Fix the struct, never
+    /// the test.
     #[test]
     fn x1_mainnet_pool_layout() {
         // Allocated size must match what the deployed program created.
@@ -1261,7 +1262,7 @@ mod test {
         assert_eq!(pool.version, CURRENT_STAKE_POOL_VERSION);
         assert_eq!(pool.account_type, AccountType::StakePool);
         assert_eq!(pool.max_validator_stake, None);
-        assert_eq!(pool._reserved, [0u8; 256]);
+        assert_eq!(pool.reserved, [0u8; 256]);
         assert!(pool.is_valid());
 
         // Anchor fields against the recorded foundation-pool run log. These
@@ -1339,13 +1340,13 @@ mod test {
         assert_eq!(X1_MAINNET_POOL[436], 0, "max_validator_stake Option tag");
         assert!(
             X1_MAINNET_POOL[437..693].iter().all(|&b| b == 0),
-            "_reserved"
+            "reserved"
         );
     }
 
     /// The `version` byte must sit at offset 0, ahead of `account_type`.
     /// Upstream has `account_type` at offset 0, so this is the single byte that
-    /// makes our layout incompatible with upstream's — and it is exactly what
+    /// makes our layout incompatible with the upstream one, and it is exactly what
     /// the live pool depends on.
     #[test]
     fn x1_version_byte_precedes_account_type() {
@@ -1362,9 +1363,10 @@ mod test {
         assert_eq!(bytes[1], AccountType::StakePool as u8);
     }
 
-    /// Setting a cap later grows the encoding by 8 bytes (`None` -> `Some`).
+    /// Setting a cap later grows the encoding by 8 bytes, going from `None` to
+    /// `Some`.
     /// The live pool is allocated at `get_packed_len`, so this must still fit
-    /// without a realloc — otherwise `SetMaxValidatorStake` would fail on the
+    /// without a realloc -- otherwise `SetMaxValidatorStake` would fail on the
     /// existing pool.
     #[test]
     fn x1_max_validator_stake_fits_allocation() {

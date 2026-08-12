@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 from solders.pubkey import Pubkey
 
-STAKE_POOL_PROGRAM_ID = Pubkey.from_string("SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy")
+STAKE_POOL_PROGRAM_ID = Pubkey.from_string("XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux")
 """Public key that identifies the SPL Stake Pool program."""
 
 MAX_VALIDATORS_TO_UPDATE: int = 4

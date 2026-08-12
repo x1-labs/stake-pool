@@ -12,6 +12,7 @@ export const CONSTANTS = {
 };
 
 export const stakePoolMock = {
+  version: 1,
   accountType: 1,
   manager: new PublicKey(11),
   staker: new PublicKey(12),

@@ -10,6 +10,7 @@ import {
 } from '@solana/web3.js';
 import * as BufferLayout from '@solana/buffer-layout';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import BN from 'bn.js';
 import { InstructionType, encodeData, decodeData } from './utils';
 import {
   METADATA_MAX_NAME_LENGTH,
@@ -40,7 +41,17 @@ export type StakePoolInstructionType =
   | 'AddValidatorToPool'
   | 'RemoveValidatorFromPool';
 
-// 'UpdateTokenMetadata' and 'CreateTokenMetadata' have dynamic layouts
+// 'UpdateTokenMetadata', 'CreateTokenMetadata' and 'SetMaxValidatorStake' have
+// dynamic layouts
+
+/**
+ * Instruction index of `SetMaxValidatorStake` (X1 fork only).
+ *
+ * Kept out of `STAKE_POOL_INSTRUCTION_LAYOUTS` because the payload is
+ * variable-width: borsh encodes `Option<u64>` as a 1-byte tag plus 8 bytes only
+ * when `Some`. See {@link StakePoolInstruction.setMaxValidatorStake}.
+ */
+export const SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX = 27;
 
 const MOVE_STAKE_LAYOUT = BufferLayout.struct<any>([
   BufferLayout.u8('instruction'),
@@ -385,6 +396,18 @@ export type RemoveValidatorFromPoolParams = {
 };
 
 /**
+ * Sets the maximum stake per validator (X1 fork only).
+ *
+ * Omit `maxStake` (or pass `undefined`) to clear the limit.
+ */
+export type SetMaxValidatorStakeParams = {
+  programId?: PublicKey | undefined;
+  stakePool: PublicKey;
+  manager: PublicKey;
+  maxStake?: BN | undefined;
+};
+
+/**
  * Stake Pool Instruction class
  */
 export class StakePoolInstruction {
@@ -454,6 +477,42 @@ export class StakePoolInstruction {
       { pubkey: transientStake, isSigner: false, isWritable: true },
       { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: StakeProgram.programId, isSigner: false, isWritable: false },
+    ];
+
+    return new TransactionInstruction({
+      programId: programId ?? STAKE_POOL_PROGRAM_ID,
+      keys,
+      data,
+    });
+  }
+
+  /**
+   * Creates an instruction to set the maximum stake per validator (X1 fork
+   * only). Must be signed by the pool manager.
+   *
+   * Omit `maxStake` to clear the limit.
+   */
+  static setMaxValidatorStake(params: SetMaxValidatorStakeParams): TransactionInstruction {
+    const { programId, stakePool, manager, maxStake } = params;
+
+    // borsh encodes Option<u64> as a 1-byte tag followed by 8 little-endian
+    // bytes ONLY when Some. The program decodes with try_from_slice, which
+    // rejects trailing bytes, so `None` must be exactly two bytes -- a
+    // fixed-width payload makes clearing the cap fail on-chain. Built by hand
+    // rather than with a struct layout because of that variable width, and
+    // because the value is an unsigned 64-bit that must not round-trip through
+    // a JS number.
+    const data =
+      maxStake === undefined || maxStake === null
+        ? Buffer.from([SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX, 0])
+        : Buffer.concat([
+            Buffer.from([SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX, 1]),
+            maxStake.toArrayLike(Buffer, 'le', 8),
+          ]);
+
+    const keys = [
+      { pubkey: stakePool, isSigner: false, isWritable: true },
+      { pubkey: manager, isSigner: true, isWritable: false },
     ];
 
     return new TransactionInstruction({

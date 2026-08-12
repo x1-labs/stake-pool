@@ -9,6 +9,7 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from '@solana/web3.js';
+import { stakePoolConfig } from './config';
 import {
   createApproveInstruction,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -32,6 +33,7 @@ import {
 } from './utils';
 import { StakePoolInstruction } from './instructions';
 import {
+  AccountType,
   StakeAccount,
   StakePool,
   StakePoolLayout,
@@ -79,6 +81,14 @@ export interface StakePoolAccounts {
 }
 
 export function getStakePoolProgramId(rpcEndpoint: string): PublicKey {
+  // An explicitly configured program ID wins. Note this must read the
+  // nullable override, not stakePoolConfig.getProgramId(), which falls back to
+  // the default and so would make the endpoint check below unreachable.
+  const override = stakePoolConfig.getOverride();
+  if (override) {
+    return override;
+  }
+
   if (rpcEndpoint.includes('devnet')) {
     return DEVNET_STAKE_POOL_PROGRAM_ID;
   } else {
@@ -148,8 +158,16 @@ export async function getStakePoolAccounts(
   return response
     .map((a) => {
       try {
-        if (a.account.data.readUInt8() === 1) {
-          const data = StakePoolLayout.decode(a.account.data);
+        // X1 fork: the two account types are framed differently, so the
+        // account type is NOT at a common offset.
+        //   ValidatorList: [0] = accountType (2)
+        //   StakePool:     [0] = version, [1] = accountType (1)
+        // Check ValidatorList first on byte 0, then StakePool on byte 1. Do not
+        // collapse this back to a single readUInt8() on byte 0: that only
+        // appears to work while version == AccountType.StakePool == 1, and
+        // would misread every pool as a validator list once version is bumped.
+        if (a.account.data.readUInt8(0) === AccountType.ValidatorList) {
+          const data = ValidatorListLayout.decode(a.account.data);
           return {
             pubkey: a.pubkey,
             account: {
@@ -159,8 +177,8 @@ export async function getStakePoolAccounts(
               owner: a.account.owner,
             },
           };
-        } else if (a.account.data.readUInt8() === 2) {
-          const data = ValidatorListLayout.decode(a.account.data);
+        } else if (a.account.data.readUInt8(1) === AccountType.StakePool) {
+          const data = StakePoolLayout.decode(a.account.data);
           return {
             pubkey: a.pubkey,
             account: {
@@ -172,7 +190,8 @@ export async function getStakePoolAccounts(
           };
         } else {
           console.error(
-            `Could not decode. StakePoolAccount Enum is ${a.account.data.readUInt8()}, expected 1 or 2!`,
+            `Could not decode account: version byte ${a.account.data.readUInt8(0)}, ` +
+              `account type byte ${a.account.data.readUInt8(1)}`,
           );
           return undefined;
         }
@@ -1172,6 +1191,7 @@ export async function stakePoolInfo(connection: Connection, stakePoolAddress: Pu
     nextSolWithdrawalFee: stakePool.account.data.nextSolWithdrawalFee,
     lastEpochPoolTokenSupply: stakePool.account.data.lastEpochPoolTokenSupply.toString(),
     lastEpochTotalLamports: stakePool.account.data.lastEpochTotalLamports.toString(),
+    maxValidatorStake: stakePool.account.data.maxValidatorStake?.toString(),
     details: {
       reserveStakeLamports: reserveStake?.lamports,
       reserveAccountStakeAddress: reserveAccountStakeAddress.toBase58(),
@@ -1265,4 +1285,22 @@ export async function updatePoolTokenMetadata(
   return {
     instructions,
   };
+}
+
+/**
+ * Set a custom stake pool program ID (X1 fork only).
+ *
+ * Takes precedence over the endpoint-based default in
+ * {@link getStakePoolProgramId}.
+ * @param programId The custom program ID to use
+ */
+export function setStakePoolProgramId(programId: PublicKey): void {
+  stakePoolConfig.setProgramId(programId);
+}
+
+/**
+ * Reset the stake pool program ID to its default (X1 fork only).
+ */
+export function resetStakePoolProgramId(): void {
+  stakePoolConfig.reset();
 }

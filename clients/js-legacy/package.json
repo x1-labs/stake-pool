@@ -10,6 +10,7 @@
     "lint": "eslint --max-warnings 0 .",
     "lint:fix": "eslint . --fix",
     "test": "jest",
+    "verify-x1": "node scripts/verify-x1.mjs",
     "clean": "rimraf ./dist"
   },
   "keywords": [],

@@ -128,6 +128,7 @@ export interface Lockup {
 }
 
 export interface StakePool {
+  version: number;
   accountType: AccountType;
   manager: PublicKey;
   staker: PublicKey;
@@ -158,9 +159,15 @@ export interface StakePool {
   nextSolWithdrawalFee?: Fee | undefined;
   lastEpochPoolTokenSupply: BN;
   lastEpochTotalLamports: BN;
+  maxValidatorStake?: BN | undefined;
 }
 
+// X1 fork: `version` is prepended before `accountType`, and
+// `maxValidatorStake` is appended. The trailing `_reserved: [u8; 256]` is
+// intentionally not modelled — this layout is only ever used to decode
+// accounts written by the program, and trailing bytes are ignored.
 export const StakePoolLayout = struct<StakePool>([
+  u8('version'),
   u8('accountType'),
   publicKey('manager'),
   publicKey('staker'),
@@ -191,6 +198,7 @@ export const StakePoolLayout = struct<StakePool>([
   futureEpoch(struct(feeFields), 'nextSolWithdrawalFee'),
   u64('lastEpochPoolTokenSupply'),
   u64('lastEpochTotalLamports'),
+  option(u64(), 'maxValidatorStake'),
 ]);
 
 export enum ValidatorStakeInfoStatus {

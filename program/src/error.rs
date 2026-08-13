@@ -164,7 +164,16 @@ pub enum StakePoolError {
     /// Missing required sysvar account
     #[error("Missing required sysvar account")]
     MissingRequiredSysvar,
+    /// Epoch reward distribution is currently in progress, stakes are still being updated
+    #[error("Epoch reward distribution is currently in progress, stakes are still being updated")]
+    EpochRewardDistributionInProgress,
+    /// The stake pool has too many validators in the pool
+    #[error("The stake pool has too many validators in the pool")]
+    TooManyValidatorsInPool,
     /// Validator stake would exceed maximum allowed stake limit
+    ///
+    /// X1 fork only. Kept last so the upstream error discriminants keep their
+    /// canonical values; do not move it.
     #[error("Validator stake would exceed maximum allowed stake limit")]
     ExceedsMaxValidatorStake,
 }

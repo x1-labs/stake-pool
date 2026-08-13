@@ -668,7 +668,7 @@ async fn test_max_validator_stake_limit() {
             false,
         )
         .await;
-    
+
     // This might fail if we're over the limit, so check
     if result.is_some() {
         // If it failed, it should be because of the max stake limit

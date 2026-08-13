@@ -3569,11 +3569,10 @@ fn main() {
             let max_stake = match arg_matches.value_of("max_stake").unwrap() {
                 "none" => None,
                 amount_str => {
-                    let amount = amount_str.parse::<f64>()
-                        .unwrap_or_else(|_| {
-                            eprintln!("Invalid amount: {}", amount_str);
-                            exit(1);
-                        });
+                    let amount = amount_str.parse::<f64>().unwrap_or_else(|_| {
+                        eprintln!("Invalid amount: {}", amount_str);
+                        exit(1);
+                    });
                     Some(native_token::sol_to_lamports(amount))
                 }
             };

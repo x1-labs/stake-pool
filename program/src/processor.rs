@@ -1615,7 +1615,7 @@ impl Processor {
             let new_total_stake = current_total_stake
                 .checked_add(lamports)
                 .ok_or(StakePoolError::CalculationFailure)?;
-            
+
             if new_total_stake > max_stake {
                 msg!(
                     "Validator stake would exceed maximum allowed. Current: {}, Increase: {}, Maximum: {}",

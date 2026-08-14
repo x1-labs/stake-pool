@@ -128,6 +128,7 @@ export interface Lockup {
 }
 
 export interface StakePool {
+  version: number;
   accountType: AccountType;
   manager: PublicKey;
   staker: PublicKey;

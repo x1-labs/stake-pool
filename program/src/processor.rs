@@ -1615,7 +1615,7 @@ impl Processor {
             let new_total_stake = current_total_stake
                 .checked_add(lamports)
                 .ok_or(StakePoolError::CalculationFailure)?;
-            
+
             if new_total_stake > max_stake {
                 msg!(
                     "Validator stake would exceed maximum allowed. Current: {}, Increase: {}, Maximum: {}",
@@ -2108,6 +2108,8 @@ impl Processor {
                                     stake_history_info.clone(),
                                 )?;
                                 validator_stake_record.status.remove_validator_stake()?;
+                            } else {
+                                active_stake_lamports = validator_stake_info.lamports();
                             }
                         }
                         StakeStatus::DeactivatingTransient | StakeStatus::ReadyForRemoval => {

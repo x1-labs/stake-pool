@@ -598,8 +598,6 @@ async fn fail_with_force_destaked_validator() {}
 async fn test_max_validator_stake_limit() {
     let (mut context, stake_pool_accounts, validator_stake, _reserve_lamports) = setup().await;
 
-    let rent = context.banks_client.get_rent().await.unwrap();
-    let stake_rent = rent.minimum_balance(std::mem::size_of::<stake::state::StakeStateV2>());
     let current_minimum_delegation = stake_pool_get_minimum_delegation(
         &mut context.banks_client,
         &context.payer,
@@ -668,7 +666,7 @@ async fn test_max_validator_stake_limit() {
             false,
         )
         .await;
-    
+
     // This might fail if we're over the limit, so check
     if result.is_some() {
         // If it failed, it should be because of the max stake limit

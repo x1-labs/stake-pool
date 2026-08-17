@@ -39,10 +39,19 @@ export type StakePoolInstructionType =
   | 'DecreaseValidatorStakeWithReserve'
   | 'Redelegate'
   | 'AddValidatorToPool'
-  | 'RemoveValidatorFromPool'
-  | 'SetMaxValidatorStake';
+  | 'RemoveValidatorFromPool';
 
-// 'UpdateTokenMetadata' and 'CreateTokenMetadata' have dynamic layouts
+// 'UpdateTokenMetadata', 'CreateTokenMetadata' and 'SetMaxValidatorStake' have
+// dynamic layouts
+
+/**
+ * Instruction index of `SetMaxValidatorStake` (X1 fork only).
+ *
+ * Kept out of `STAKE_POOL_INSTRUCTION_LAYOUTS` because the payload is
+ * variable-width: borsh encodes `Option<u64>` as a 1-byte tag plus 8 bytes only
+ * when `Some`. See {@link StakePoolInstruction.setMaxValidatorStake}.
+ */
+export const SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX = 27;
 
 const MOVE_STAKE_LAYOUT = BufferLayout.struct<any>([
   BufferLayout.u8('instruction'),
@@ -179,14 +188,6 @@ export const STAKE_POOL_INSTRUCTION_LAYOUTS: {
   Redelegate: {
     index: 22,
     layout: BufferLayout.struct<any>([BufferLayout.u8('instruction')]),
-  },
-  SetMaxValidatorStake: {
-    index: 27,
-    layout: BufferLayout.struct<any>([
-      BufferLayout.u8('instruction'),
-      BufferLayout.u8('maxStakeOption'),
-      BufferLayout.ns64('maxStake'),
-    ]),
   },
 });
 
@@ -394,6 +395,11 @@ export type RemoveValidatorFromPoolParams = {
   transientStake: PublicKey;
 };
 
+/**
+ * Sets the maximum stake per validator (X1 fork only).
+ *
+ * Omit `maxStake` (or pass `undefined`) to clear the limit.
+ */
 export type SetMaxValidatorStakeParams = {
   programId?: PublicKey | undefined;
   stakePool: PublicKey;
@@ -481,21 +487,28 @@ export class StakePoolInstruction {
   }
 
   /**
-   * Creates instruction to set the max validator stake for the stake pool.
+   * Creates an instruction to set the maximum stake per validator (X1 fork
+   * only). Must be signed by the pool manager.
+   *
+   * Omit `maxStake` to clear the limit.
    */
   static setMaxValidatorStake(params: SetMaxValidatorStakeParams): TransactionInstruction {
     const { programId, stakePool, manager, maxStake } = params;
 
-    const type = STAKE_POOL_INSTRUCTION_LAYOUTS.SetMaxValidatorStake;
-    const data = Buffer.alloc(type.layout.span);
-
-    const layoutData = {
-      instruction: type.index,
-      maxStakeOption: maxStake === undefined ? 0 : 1,
-      maxStake: maxStake ?? new BN(0),
-    };
-
-    type.layout.encode(layoutData, data);
+    // borsh encodes Option<u64> as a 1-byte tag followed by 8 little-endian
+    // bytes ONLY when Some. The program decodes with try_from_slice, which
+    // rejects trailing bytes, so `None` must be exactly two bytes -- a
+    // fixed-width payload makes clearing the cap fail on-chain. Built by hand
+    // rather than with a struct layout because of that variable width, and
+    // because the value is an unsigned 64-bit that must not round-trip through
+    // a JS number.
+    const data =
+      maxStake === undefined || maxStake === null
+        ? Buffer.from([SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX, 0])
+        : Buffer.concat([
+            Buffer.from([SET_MAX_VALIDATOR_STAKE_INSTRUCTION_INDEX, 1]),
+            maxStake.toArrayLike(Buffer, 'le', 8),
+          ]);
 
     const keys = [
       { pubkey: stakePool, isSigner: false, isWritable: true },
@@ -1139,20 +1152,24 @@ export class StakePoolInstruction {
     this.checkProgramId(instruction.programId);
     this.checkKeyLength(instruction.keys, 9);
 
-    const { amount } = decodeData(STAKE_POOL_INSTRUCTION_LAYOUTS.DepositSol, instruction.data);
+    const { lamports } = decodeData(STAKE_POOL_INSTRUCTION_LAYOUTS.DepositSol, instruction.data);
+
+    const keys = instruction.keys;
 
     return {
       programId: instruction.programId,
-      stakePool: instruction.keys[0].pubkey,
-      depositAuthority: instruction.keys[1].pubkey,
-      withdrawAuthority: instruction.keys[2].pubkey,
-      reserveStake: instruction.keys[3].pubkey,
-      fundingAccount: instruction.keys[4].pubkey,
-      destinationPoolAccount: instruction.keys[5].pubkey,
-      managerFeeAccount: instruction.keys[6].pubkey,
-      referralPoolAccount: instruction.keys[7].pubkey,
-      poolMint: instruction.keys[8].pubkey,
-      lamports: amount,
+      stakePool: keys[0].pubkey,
+      withdrawAuthority: keys[1].pubkey,
+      reserveStake: keys[2].pubkey,
+      fundingAccount: keys[3].pubkey,
+      destinationPoolAccount: keys[4].pubkey,
+      managerFeeAccount: keys[5].pubkey,
+      referralPoolAccount: keys[6].pubkey,
+      poolMint: keys[7].pubkey,
+      // keys[8] and keys[9] are the system and token programs. The optional
+      // deposit authority is appended after them by depositSol().
+      depositAuthority: keys.length > 10 ? keys[10].pubkey : undefined,
+      lamports,
     };
   }
 

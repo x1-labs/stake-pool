@@ -24,27 +24,29 @@ use {
     },
     solana_cli_output::OutputFormat,
     solana_client::rpc_client::RpcClient,
+    solana_commitment_config::CommitmentConfig,
+    solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_program::{
         borsh1::{get_instance_packed_len, get_packed_len},
         instruction::Instruction,
         program_pack::Pack,
         pubkey::Pubkey,
-        stake,
     },
     solana_remote_wallet::remote_wallet::RemoteWalletManager,
     solana_sdk::{
-        commitment_config::CommitmentConfig,
-        compute_budget::ComputeBudgetInstruction,
         hash::Hash,
         message::Message,
         native_token::{self, Sol},
         signature::{Keypair, Signer},
         signers::Signers,
-        system_instruction,
         transaction::Transaction,
     },
-    spl_associated_token_account::instruction::create_associated_token_account,
-    spl_associated_token_account_client::address::get_associated_token_address_with_program_id,
+    solana_stake_interface as stake,
+    solana_system_interface::instruction as system_instruction,
+    spl_associated_token_account_interface::{
+        address::get_associated_token_address_with_program_id,
+        instruction::create_associated_token_account,
+    },
     spl_stake_pool::{
         self, find_stake_program_address, find_transient_stake_program_address,
         find_withdraw_authority_program_address,
@@ -53,7 +55,7 @@ use {
         state::{Fee, FeeType, StakePool, ValidatorList, ValidatorStakeInfo},
         MINIMUM_RESERVE_LAMPORTS,
     },
-    spl_token_2022::{
+    spl_token_2022_interface::{
         check_spl_token_program_account, extension::StateWithExtensions, state::Mint,
     },
     std::{cmp::Ordering, num::NonZeroU32, process::exit, rc::Rc},
@@ -201,6 +203,7 @@ fn get_latest_blockhash(client: &RpcClient) -> Result<Hash, Error> {
         .0)
 }
 
+#[allow(clippy::result_large_err)]
 fn send_transaction_no_wait(
     config: &Config,
     transaction: Transaction,
@@ -215,6 +218,7 @@ fn send_transaction_no_wait(
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 fn send_transaction(
     config: &Config,
     transaction: Transaction,
@@ -402,7 +406,7 @@ fn setup_mint_account(
                     .into());
                 }
             } else {
-                let instructions = vec![spl_token_2022::instruction::initialize_mint(
+                let instructions = vec![spl_token_2022_interface::instruction::initialize_mint(
                     &account.owner,
                     &mint_keypair.pubkey(),
                     withdraw_authority,
@@ -427,11 +431,11 @@ fn setup_mint_account(
             &config.fee_payer.pubkey(),
             &mint_keypair.pubkey(),
             mint_account_balance,
-            spl_token_2022::state::Mint::LEN as u64,
-            &spl_token::id(),
+            spl_token_2022_interface::state::Mint::LEN as u64,
+            &spl_token_interface::id(),
         ),
-        spl_token_2022::instruction::initialize_mint(
-            &spl_token::id(),
+        spl_token_2022_interface::instruction::initialize_mint(
+            &spl_token_interface::id(),
             &mint_keypair.pubkey(),
             withdraw_authority,
             None,
@@ -447,7 +451,7 @@ fn setup_mint_account(
         mint_keypair.pubkey()
     );
     send_transaction(config, transaction)?;
-    Ok(spl_token::id())
+    Ok(spl_token_interface::id())
 }
 
 fn setup_pool_fee_account(
@@ -640,10 +644,10 @@ fn command_create_pool(
         + MINIMUM_RESERVE_LAMPORTS;
     let mint_account_balance = config
         .rpc_client
-        .get_minimum_balance_for_rent_exemption(spl_token_2022::state::Mint::LEN)?;
+        .get_minimum_balance_for_rent_exemption(spl_token_2022_interface::state::Mint::LEN)?;
     let pool_fee_account_balance = config
         .rpc_client
-        .get_minimum_balance_for_rent_exemption(spl_token_2022::state::Account::LEN)?;
+        .get_minimum_balance_for_rent_exemption(spl_token_2022_interface::state::Account::LEN)?;
     let stake_pool_account_lamports = config
         .rpc_client
         .get_minimum_balance_for_rent_exemption(get_packed_len::<StakePool>())?;
@@ -658,7 +662,7 @@ fn command_create_pool(
         + stake_pool_account_lamports
         + validator_list_balance;
 
-    let default_decimals = spl_token_2022::native_mint::DECIMALS;
+    let default_decimals = spl_token_2022_interface::native_mint::DECIMALS;
 
     // Calculate withdraw authority used for minting pool tokens
     let (withdraw_authority, _) = find_withdraw_authority_program_address(
@@ -886,9 +890,8 @@ fn command_increase_validator_stake(
     config: &Config,
     stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
-    amount: f64,
+    lamports: u64,
 ) -> CommandResult {
-    let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
         command_update(config, stake_pool_address, false, false, false)?;
     }
@@ -925,9 +928,8 @@ fn command_decrease_validator_stake(
     config: &Config,
     stake_pool_address: &Pubkey,
     vote_account: &Pubkey,
-    amount: f64,
+    lamports: u64,
 ) -> CommandResult {
-    let lamports = native_token::sol_to_lamports(amount);
     if !config.no_update {
         command_update(config, stake_pool_address, false, false, false)?;
     }
@@ -1000,7 +1002,7 @@ fn add_associated_token_account(
 
         let min_account_balance = config
             .rpc_client
-            .get_minimum_balance_for_rent_exemption(spl_token_2022::state::Account::LEN)
+            .get_minimum_balance_for_rent_exemption(spl_token_2022_interface::state::Account::LEN)
             .unwrap();
 
         instructions.push(create_associated_token_account(
@@ -1285,23 +1287,21 @@ fn command_deposit_sol(
     from: &Option<Keypair>,
     pool_token_receiver_account: &Option<Pubkey>,
     referrer_token_account: &Option<Pubkey>,
-    amount: f64,
+    lamports: u64,
 ) -> CommandResult {
     if !config.no_update {
         command_update(config, stake_pool_address, false, false, false)?;
     }
-
-    let amount = native_token::sol_to_lamports(amount);
 
     // Check withdraw_from balance
     let from_pubkey = from
         .as_ref()
         .map_or_else(|| config.fee_payer.pubkey(), |keypair| keypair.pubkey());
     let from_balance = config.rpc_client.get_balance(&from_pubkey)?;
-    if from_balance < amount {
+    if from_balance < lamports {
         return Err(format!(
             "Not enough SOL to deposit into pool: {}.\nMaximum deposit amount is {} SOL.",
-            Sol(amount),
+            Sol(lamports),
             Sol(from_balance)
         )
         .into());
@@ -1324,7 +1324,7 @@ fn command_deposit_sol(
     instructions.push(system_instruction::transfer(
         &from_pubkey,
         &user_sol_transfer.pubkey(),
-        amount,
+        lamports,
     ));
 
     // Create token account if not specified
@@ -1370,7 +1370,7 @@ fn command_deposit_sol(
             &referrer_token_account,
             &stake_pool.pool_mint,
             &stake_pool.token_program_id,
-            amount,
+            lamports,
         )
     } else {
         spl_stake_pool::instruction::deposit_sol(
@@ -1384,7 +1384,7 @@ fn command_deposit_sol(
             &referrer_token_account,
             &stake_pool.pool_mint,
             &stake_pool.token_program_id,
-            amount,
+            lamports,
         )
     };
 
@@ -1401,7 +1401,11 @@ fn command_deposit_sol(
     Ok(())
 }
 
-fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
+fn command_list(
+    config: &Config,
+    stake_pool_address: &Pubkey,
+    sort_by: Option<&str>,
+) -> CommandResult {
     let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
     let reserve_stake_account_address = stake_pool.reserve_stake.to_string();
     let total_lamports = stake_pool.total_lamports;
@@ -1419,10 +1423,11 @@ fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
         .rpc_client
         .get_minimum_balance_for_rent_exemption(STAKE_STATE_LEN)?
         + MINIMUM_RESERVE_LAMPORTS;
-    let cli_stake_pool_stake_account_infos = validator_list
+    let mut cli_stake_pool_stake_account_infos: Vec<CliStakePoolStakeAccountInfo> = validator_list
         .validators
         .iter()
-        .map(|validator| {
+        .enumerate()
+        .map(|(index, validator)| {
             let validator_seed = NonZeroU32::new(validator.validator_seed_suffix.into());
             let (stake_account_address, _) = find_stake_program_address(
                 &config.stake_pool_program_id,
@@ -1438,6 +1443,7 @@ fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
             );
             let update_required = u64::from(validator.last_update_epoch) != epoch_info.epoch;
             CliStakePoolStakeAccountInfo {
+                index,
                 vote_account_address: validator.vote_account_address.to_string(),
                 stake_account_address: stake_account_address.to_string(),
                 validator_active_stake_lamports: validator.active_stake_lamports.into(),
@@ -1450,8 +1456,24 @@ fn command_list(config: &Config, stake_pool_address: &Pubkey) -> CommandResult {
             }
         })
         .collect();
+
+    match sort_by {
+        Some("stake") => {
+            cli_stake_pool_stake_account_infos
+                .sort_by(|a, b| b.validator_lamports.cmp(&a.validator_lamports));
+        }
+        Some("update-epoch") => {
+            cli_stake_pool_stake_account_infos.sort_by(|a, b| {
+                b.validator_last_update_epoch
+                    .cmp(&a.validator_last_update_epoch)
+            });
+        }
+        _ => {
+            // Default: keep original order (by index)
+        }
+    }
     let total_pool_tokens =
-        spl_token_2022::amount_to_ui_amount(stake_pool.pool_token_supply, pool_mint.decimals);
+        spl_token::amount_to_ui_amount(stake_pool.pool_token_supply, pool_mint.decimals);
     let mut cli_stake_pool = CliStakePool::from((
         *stake_pool_address,
         stake_pool,
@@ -1698,7 +1720,7 @@ fn prepare_withdraw_accounts(
     if remaining_amount > 0 {
         return Err(format!(
             "No stake accounts found in this pool with enough balance to withdraw {} pool tokens.",
-            spl_token_2022::amount_to_ui_amount(pool_amount, pool_mint.decimals)
+            spl_token::amount_to_ui_amount(pool_amount, pool_mint.decimals)
         )
         .into());
     }
@@ -1721,7 +1743,7 @@ fn command_withdraw_stake(
 
     let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
     let pool_mint = get_token_mint(&config.rpc_client, &stake_pool.pool_mint)?;
-    let pool_amount = spl_token_2022::ui_amount_to_amount(pool_amount, pool_mint.decimals);
+    let pool_amount = spl_token::ui_amount_to_amount(pool_amount, pool_mint.decimals);
 
     let pool_withdraw_authority =
         find_withdraw_authority_program_address(&config.stake_pool_program_id, stake_pool_address)
@@ -1746,8 +1768,8 @@ fn command_withdraw_stake(
     if token_account.amount < pool_amount {
         return Err(format!(
             "Not enough token balance to withdraw {} pool tokens.\nMaximum withdraw amount is {} pool tokens.",
-            spl_token_2022::amount_to_ui_amount(pool_amount, pool_mint.decimals),
-            spl_token_2022::amount_to_ui_amount(token_account.amount, pool_mint.decimals)
+            spl_token::amount_to_ui_amount(pool_amount, pool_mint.decimals),
+            spl_token::amount_to_ui_amount(token_account.amount, pool_mint.decimals)
         )
         .into());
     }
@@ -1885,7 +1907,7 @@ fn command_withdraw_stake(
 
     instructions.push(
         // Approve spending token
-        spl_token_2022::instruction::approve(
+        spl_token_2022_interface::instruction::approve(
             &stake_pool.token_program_id,
             &pool_token_account,
             &user_transfer_authority.pubkey(),
@@ -1907,10 +1929,7 @@ fn command_withdraw_stake(
             println!(
                 "Withdrawing {}, or {} pool tokens, from stake account {}, delegated to {}",
                 Sol(sol_withdraw_amount),
-                spl_token_2022::amount_to_ui_amount(
-                    withdraw_account.pool_amount,
-                    pool_mint.decimals
-                ),
+                spl_token::amount_to_ui_amount(withdraw_account.pool_amount, pool_mint.decimals),
                 withdraw_account.stake_address,
                 vote_address,
             );
@@ -1918,10 +1937,7 @@ fn command_withdraw_stake(
             println!(
                 "Withdrawing {}, or {} pool tokens, from stake account {}",
                 Sol(sol_withdraw_amount),
-                spl_token_2022::amount_to_ui_amount(
-                    withdraw_account.pool_amount,
-                    pool_mint.decimals
-                ),
+                spl_token::amount_to_ui_amount(withdraw_account.pool_amount, pool_mint.decimals),
                 withdraw_account.stake_address,
             );
         }
@@ -1996,7 +2012,7 @@ fn command_withdraw_sol(
 
     let stake_pool = get_stake_pool(&config.rpc_client, stake_pool_address)?;
     let pool_mint = get_token_mint(&config.rpc_client, &stake_pool.pool_mint)?;
-    let pool_amount = spl_token_2022::ui_amount_to_amount(pool_amount, pool_mint.decimals);
+    let pool_amount = spl_token::ui_amount_to_amount(pool_amount, pool_mint.decimals);
 
     let pool_token_account =
         pool_token_account.unwrap_or(get_associated_token_address_with_program_id(
@@ -2014,8 +2030,8 @@ fn command_withdraw_sol(
     if token_account.amount < pool_amount {
         return Err(format!(
             "Not enough token balance to withdraw {} pool tokens.\nMaximum withdraw amount is {} pool tokens.",
-            spl_token_2022::amount_to_ui_amount(pool_amount, pool_mint.decimals),
-            spl_token_2022::amount_to_ui_amount(token_account.amount, pool_mint.decimals)
+            spl_token::amount_to_ui_amount(pool_amount, pool_mint.decimals),
+            spl_token::amount_to_ui_amount(token_account.amount, pool_mint.decimals)
         )
         .into());
     }
@@ -2030,7 +2046,7 @@ fn command_withdraw_sol(
 
     let mut instructions = vec![
         // Approve spending token
-        spl_token_2022::instruction::approve(
+        spl_token_2022_interface::instruction::approve(
             &stake_pool.token_program_id,
             &pool_token_account,
             &user_transfer_authority.pubkey(),
@@ -2366,7 +2382,17 @@ fn main() {
                 .validator(is_valid_signer)
                 .takes_value(true)
                 .global(true)
-                .help("Transaction fee payer account [default: cli config keypair]"),
+                .help("Transaction fee payer account [defaults: cli config keypair]"),
+        )
+        .arg(
+            Arg::with_name("keypair")
+                .long("keypair")
+                .short("k")
+                .value_name("KEYPAIR")
+                .validator(is_keypair_or_ask_keyword)
+                .takes_value(true)
+                .global(true)
+                .help("Default keypair path for all operations [default: cli config keypair]"),
         )
         .arg(compute_unit_price_arg().validator(is_parsable::<u64>).global(true))
         .arg(
@@ -2873,6 +2899,14 @@ fn main() {
                     .required(true)
                     .help("Stake pool address."),
             )
+            .arg(
+                Arg::with_name("sort")
+                    .long("sort")
+                    .value_name("SORT_OPTION")
+                    .takes_value(true)
+                    .possible_values(&["stake", "update-epoch"])
+                    .help("Sort validators by: stake (largest first) or update-epoch (most recent first)"),
+            )
         )
         .subcommand(SubCommand::with_name("update")
             .about("Updates all balances in the pool after validator stake accounts receive rewards.")
@@ -3176,7 +3210,8 @@ fn main() {
                     .value_name("MAX_STAKE")
                     .takes_value(true)
                     .required(true)
-                    .help("Maximum stake per validator in SOL, or 'none' to remove the limit"),
+                    .help("Maximum stake per validator, in SOL, or 'none' to remove the limit. \
+                           Note this caps staker-initiated increases only; it does not limit deposits."),
             )
         )
         .subcommand(SubCommand::with_name("list-all")
@@ -3190,6 +3225,11 @@ fn main() {
     } else {
         solana_cli_config::Config::default()
     };
+
+    let default_keypair_path = matches
+        .value_of("keypair")
+        .unwrap_or(&cli_config.keypair_path);
+
     let config = {
         let json_rpc_url = value_t!(matches, "json_rpc_url", String)
             .unwrap_or_else(|_| cli_config.json_rpc_url.clone());
@@ -3197,7 +3237,7 @@ fn main() {
         let staker = get_signer(
             &matches,
             "staker",
-            &cli_config.keypair_path,
+            default_keypair_path,
             &mut wallet_manager,
             SignerFromPathConfig {
                 allow_null_signer: false,
@@ -3208,7 +3248,7 @@ fn main() {
             Some(get_signer(
                 &matches,
                 "funding_authority",
-                &cli_config.keypair_path,
+                default_keypair_path,
                 &mut wallet_manager,
                 SignerFromPathConfig {
                     allow_null_signer: false,
@@ -3220,7 +3260,7 @@ fn main() {
         let manager = get_signer(
             &matches,
             "manager",
-            &cli_config.keypair_path,
+            default_keypair_path,
             &mut wallet_manager,
             SignerFromPathConfig {
                 allow_null_signer: false,
@@ -3229,7 +3269,7 @@ fn main() {
         let token_owner = get_signer(
             &matches,
             "token_owner",
-            &cli_config.keypair_path,
+            default_keypair_path,
             &mut wallet_manager,
             SignerFromPathConfig {
                 allow_null_signer: false,
@@ -3238,7 +3278,7 @@ fn main() {
         let fee_payer = get_signer(
             &matches,
             "fee_payer",
-            &cli_config.keypair_path,
+            default_keypair_path,
             &mut wallet_manager,
             SignerFromPathConfig {
                 allow_null_signer: false,
@@ -3360,14 +3400,16 @@ fn main() {
         ("increase-validator-stake", Some(arg_matches)) => {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account").unwrap();
-            let amount = value_t_or_exit!(arg_matches, "amount", f64);
-            command_increase_validator_stake(&config, &stake_pool_address, &vote_account, amount)
+            let amount_str = arg_matches.value_of("amount").unwrap();
+            let lamports = native_token::sol_str_to_lamports(amount_str).unwrap();
+            command_increase_validator_stake(&config, &stake_pool_address, &vote_account, lamports)
         }
         ("decrease-validator-stake", Some(arg_matches)) => {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let vote_account = pubkey_of(arg_matches, "vote_account").unwrap();
-            let amount = value_t_or_exit!(arg_matches, "amount", f64);
-            command_decrease_validator_stake(&config, &stake_pool_address, &vote_account, amount)
+            let amount_str = arg_matches.value_of("amount").unwrap();
+            let lamports = native_token::sol_str_to_lamports(amount_str).unwrap();
+            command_decrease_validator_stake(&config, &stake_pool_address, &vote_account, lamports)
         }
         ("set-preferred-validator", Some(arg_matches)) => {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
@@ -3395,7 +3437,7 @@ fn main() {
             let withdraw_authority = get_signer(
                 arg_matches,
                 "withdraw_authority",
-                &cli_config.keypair_path,
+                default_keypair_path,
                 &mut wallet_manager,
                 SignerFromPathConfig {
                     allow_null_signer: false,
@@ -3415,19 +3457,21 @@ fn main() {
             let token_receiver: Option<Pubkey> = pubkey_of(arg_matches, "token_receiver");
             let referrer: Option<Pubkey> = pubkey_of(arg_matches, "referrer");
             let from = keypair_of(arg_matches, "from");
-            let amount = value_t_or_exit!(arg_matches, "amount", f64);
+            let amount_str = arg_matches.value_of("amount").unwrap();
+            let lamports = native_token::sol_str_to_lamports(amount_str).unwrap();
             command_deposit_sol(
                 &config,
                 &stake_pool_address,
                 &from,
                 &token_receiver,
                 &referrer,
-                amount,
+                lamports,
             )
         }
         ("list", Some(arg_matches)) => {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
-            command_list(&config, &stake_pool_address)
+            let sort_by = arg_matches.value_of("sort");
+            command_list(&config, &stake_pool_address, sort_by)
         }
         ("update", Some(arg_matches)) => {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
@@ -3460,7 +3504,7 @@ fn main() {
             let sol_receiver = get_signer(
                 arg_matches,
                 "sol_receiver",
-                &cli_config.keypair_path,
+                default_keypair_path,
                 &mut wallet_manager,
                 SignerFromPathConfig {
                     allow_null_signer: true,
@@ -3568,13 +3612,12 @@ fn main() {
             let stake_pool_address = pubkey_of(arg_matches, "pool").unwrap();
             let max_stake = match arg_matches.value_of("max_stake").unwrap() {
                 "none" => None,
-                amount_str => {
-                    let amount = amount_str.parse::<f64>().unwrap_or_else(|_| {
+                amount_str => Some(
+                    native_token::sol_str_to_lamports(amount_str).unwrap_or_else(|| {
                         eprintln!("Invalid amount: {}", amount_str);
                         exit(1);
-                    });
-                    Some(native_token::sol_to_lamports(amount))
-                }
+                    }),
+                ),
             };
             command_set_max_validator_stake(&config, &stake_pool_address, max_stake)
         }
@@ -3587,7 +3630,7 @@ fn main() {
             let withdraw_authority = get_signer(
                 arg_matches,
                 "withdraw_authority",
-                &cli_config.keypair_path,
+                default_keypair_path,
                 &mut wallet_manager,
                 SignerFromPathConfig {
                     allow_null_signer: false,

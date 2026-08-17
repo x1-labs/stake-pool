@@ -1,26 +1,19 @@
 #![allow(clippy::arithmetic_side_effects)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
     helpers::*,
     solana_program::{
-        borsh1::try_from_slice_unchecked,
-        instruction::InstructionError,
-        pubkey::Pubkey,
-        stake::{
-            self,
-            stake_flags::StakeFlags,
-            state::{Authorized, Delegation, Lockup, Meta, Stake, StakeStateV2},
-        },
+        borsh1::try_from_slice_unchecked, instruction::InstructionError, pubkey::Pubkey,
     },
     solana_program_test::*,
     solana_sdk::{
-        account::{Account, WritableAccount},
-        clock::Epoch,
-        signature::Signer,
-        transaction::TransactionError,
+        account::Account, clock::Epoch, signature::Signer, transaction::TransactionError,
+    },
+    solana_stake_interface::{
+        program,
+        stake_flags::StakeFlags,
+        state::{Authorized, Delegation, Lockup, Meta, Stake, StakeStateV2},
     },
     spl_stake_pool::{
         error::StakePoolError,
@@ -45,13 +38,13 @@ async fn setup(
     let mut data = vec![0; std::mem::size_of::<StakeStateV2>()];
     bincode::serialize_into(&mut data[..], forced_stake).unwrap();
 
-    let stake_account = Account::create(
-        TEST_STAKE_AMOUNT + STAKE_ACCOUNT_RENT_EXEMPTION,
+    let stake_account = Account {
+        lamports: TEST_STAKE_AMOUNT + STAKE_ACCOUNT_RENT_EXEMPTION,
         data,
-        stake::program::id(),
-        false,
-        Epoch::default(),
-    );
+        owner: program::id(),
+        executable: false,
+        rent_epoch: Epoch::default(),
+    };
 
     let raw_validator_seed = 42;
     let validator_seed = NonZeroU32::new(raw_validator_seed);
@@ -114,6 +107,7 @@ async fn setup(
 #[tokio::test]
 async fn success_update() {
     let stake_pool_accounts = StakePoolAccounts::default();
+    #[allow(deprecated)]
     let meta = Meta {
         rent_exempt_reserve: STAKE_ACCOUNT_RENT_EXEMPTION,
         authorized: Authorized {
@@ -187,6 +181,7 @@ async fn success_update() {
 #[tokio::test]
 async fn fail_increase() {
     let stake_pool_accounts = StakePoolAccounts::default();
+    #[allow(deprecated)]
     let meta = Meta {
         rent_exempt_reserve: STAKE_ACCOUNT_RENT_EXEMPTION,
         authorized: Authorized {
@@ -242,6 +237,7 @@ async fn fail_increase() {
 #[tokio::test]
 async fn success_remove_validator() {
     let stake_pool_accounts = StakePoolAccounts::default();
+    #[allow(deprecated)]
     let meta = Meta {
         rent_exempt_reserve: STAKE_ACCOUNT_RENT_EXEMPTION,
         authorized: Authorized {

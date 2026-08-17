@@ -1,18 +1,17 @@
 #![allow(clippy::arithmetic_side_effects)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
     helpers::*,
     solana_program::{
-        borsh1::try_from_slice_unchecked, instruction::InstructionError, pubkey::Pubkey, stake,
+        borsh1::try_from_slice_unchecked, instruction::InstructionError, pubkey::Pubkey,
     },
     solana_program_test::*,
     solana_sdk::{
         signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
     },
+    solana_stake_interface as stake,
     spl_stake_pool::{
         error::StakePoolError,
         id,
@@ -79,8 +78,8 @@ async fn setup(
     )
 }
 
-#[test_case(spl_token::id(); "token")]
-#[test_case(spl_token_2022::id(); "token-2022")]
+#[test_case(spl_token_interface::id(); "token")]
+#[test_case(spl_token_2022_interface::id(); "token-2022")]
 #[tokio::test]
 async fn success(token_program_id: Pubkey) {
     let (mut context, stake_pool_accounts, user, pool_token_account, pool_tokens) =
@@ -156,7 +155,7 @@ async fn success(token_program_id: Pubkey) {
 #[tokio::test]
 async fn fail_with_wrong_withdraw_authority() {
     let (mut context, mut stake_pool_accounts, user, pool_token_account, pool_tokens) =
-        setup(spl_token::id()).await;
+        setup(spl_token_interface::id()).await;
 
     stake_pool_accounts.withdraw_authority = Pubkey::new_unique();
 
@@ -186,7 +185,7 @@ async fn fail_with_wrong_withdraw_authority() {
 #[tokio::test]
 async fn fail_overdraw_reserve() {
     let (mut context, stake_pool_accounts, user, pool_token_account, _) =
-        setup(spl_token::id()).await;
+        setup(spl_token_interface::id()).await;
 
     // add a validator and increase stake to drain the reserve
     let validator_stake = simple_add_validator_to_pool(
@@ -241,7 +240,7 @@ async fn fail_overdraw_reserve() {
 #[tokio::test]
 async fn success_with_sol_withdraw_authority() {
     let (mut context, stake_pool_accounts, user, pool_token_account, pool_tokens) =
-        setup(spl_token::id()).await;
+        setup(spl_token_interface::id()).await;
     let sol_withdraw_authority = Keypair::new();
 
     let transaction = Transaction::new_signed_with_payer(
@@ -279,7 +278,7 @@ async fn success_with_sol_withdraw_authority() {
 #[tokio::test]
 async fn fail_without_sol_withdraw_authority_signature() {
     let (mut context, stake_pool_accounts, user, pool_token_account, pool_tokens) =
-        setup(spl_token::id()).await;
+        setup(spl_token_interface::id()).await;
     let sol_withdraw_authority = Keypair::new();
 
     let transaction = Transaction::new_signed_with_payer(
@@ -324,8 +323,8 @@ async fn fail_without_sol_withdraw_authority_signature() {
     );
 }
 
-#[test_case(spl_token::id(); "token")]
-#[test_case(spl_token_2022::id(); "token-2022")]
+#[test_case(spl_token_interface::id(); "token")]
+#[test_case(spl_token_2022_interface::id(); "token-2022")]
 #[tokio::test]
 async fn success_with_slippage(token_program_id: Pubkey) {
     let (mut context, stake_pool_accounts, user, pool_token_account, pool_tokens) =

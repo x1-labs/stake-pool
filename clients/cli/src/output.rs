@@ -1,7 +1,8 @@
 use {
     serde::{Deserialize, Serialize},
     solana_cli_output::{QuietDisplay, VerboseDisplay},
-    solana_sdk::{native_token::Sol, pubkey::Pubkey, stake::state::Lockup},
+    solana_sdk::{native_token::Sol, pubkey::Pubkey},
+    solana_stake_interface::state::Lockup,
     spl_stake_pool::state::{
         Fee, PodStakeStatus, StakePool, StakeStatus, ValidatorList, ValidatorStakeInfo,
     },
@@ -168,11 +169,8 @@ impl VerboseDisplay for CliStakePool {
             "SOL Deposit Referral Fee: {}% of SOL Deposit Fee",
             &self.sol_referral_fee
         )?;
-        match &self.max_validator_stake {
-            None => {}
-            Some(max_stake) => {
-                writeln!(w, "Max Validator Stake: {}", Sol(*max_stake))?;
-            }
+        if let Some(max_stake) = &self.max_validator_stake {
+            writeln!(w, "Max Validator Stake: {}", Sol(*max_stake))?;
         }
         writeln!(w)?;
 
@@ -238,11 +236,8 @@ impl Display for CliStakePool {
             "SOL Deposit Referral Fee: {}% of SOL Deposit Fee",
             &self.sol_referral_fee
         )?;
-        match &self.max_validator_stake {
-            None => {}
-            Some(max_stake) => {
-                writeln!(f, "Max Validator Stake: {}", Sol(*max_stake))?;
-            }
+        if let Some(max_stake) = &self.max_validator_stake {
+            writeln!(f, "Max Validator Stake: {}", Sol(*max_stake))?;
         }
         Ok(())
     }
@@ -318,7 +313,8 @@ impl VerboseDisplay for CliStakePoolDetails {
         for stake_account in &self.stake_accounts {
             writeln!(
                 w,
-                "Vote Account: {}\tStake Account: {}\tActive Balance: {}\tTransient Stake Account: {}\tTransient Balance: {}\tLast Update Epoch: {}{}",
+                "Index: {}\tVote Account: {}\tStake Account: {}\tActive Balance: {}\tTransient Stake Account: {}\tTransient Balance: {}\tLast Update Epoch: {}{}",
+                stake_account.index,
                 stake_account.vote_account_address,
                 stake_account.stake_account_address,
                 Sol(stake_account.validator_active_stake_lamports),
@@ -360,6 +356,7 @@ impl VerboseDisplay for CliStakePoolDetails {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CliStakePoolStakeAccountInfo {
+    pub index: usize,
     pub vote_account_address: String,
     pub stake_account_address: String,
     pub validator_active_stake_lamports: u64,

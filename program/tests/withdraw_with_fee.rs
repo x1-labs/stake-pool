@@ -1,12 +1,9 @@
 #![allow(clippy::arithmetic_side_effects)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
-    bincode::deserialize,
     helpers::*,
-    solana_program::{pubkey::Pubkey, stake},
+    solana_program::pubkey::Pubkey,
     solana_program_test::*,
     solana_sdk::signature::{Keypair, Signer},
     spl_stake_pool::minimum_stake_lamports,
@@ -22,7 +19,7 @@ async fn success_withdraw_all_fee_tokens() {
         user_transfer_authority,
         user_stake_recipient,
         tokens_to_withdraw,
-    ) = setup_for_withdraw(spl_token::id(), 0).await;
+    ) = setup_for_withdraw(spl_token_interface::id(), 0).await;
 
     let last_blockhash = context
         .banks_client
@@ -94,12 +91,12 @@ async fn success_empty_out_stake_with_fee() {
     let (
         mut context,
         stake_pool_accounts,
-        _,
+        withdraw_validator_stake_account,
         deposit_info,
         user_transfer_authority,
         user_stake_recipient,
         tokens_to_withdraw,
-    ) = setup_for_withdraw(spl_token::id(), 0).await;
+    ) = setup_for_withdraw(spl_token_interface::id(), 0).await;
 
     let last_blockhash = context
         .banks_client
@@ -172,17 +169,17 @@ async fn success_empty_out_stake_with_fee() {
     // down to 0, using an inverse fee calculation
     let validator_stake_account = get_account(
         &mut context.banks_client,
-        &other_validator_stake_account.stake_account,
+        &withdraw_validator_stake_account.stake_account,
     )
     .await;
-    let stake_state =
-        deserialize::<stake::state::StakeStateV2>(&validator_stake_account.data).unwrap();
-    let meta = stake_state.meta().unwrap();
-    let stake_minimum_delegation =
-        stake_get_minimum_delegation(&mut context.banks_client, &context.payer, &last_blockhash)
-            .await;
-    let lamports_to_withdraw =
-        validator_stake_account.lamports - minimum_stake_lamports(&meta, stake_minimum_delegation);
+    let stake_minimum_delegation = stake_pool_get_minimum_delegation(
+        &mut context.banks_client,
+        &context.payer,
+        &last_blockhash,
+    )
+    .await;
+    let lamports_to_withdraw = validator_stake_account.lamports
+        - minimum_stake_lamports(STAKE_ACCOUNT_RENT_EXEMPTION, stake_minimum_delegation);
     let pool_tokens_to_withdraw =
         stake_pool_accounts.calculate_inverse_withdrawal_fee(lamports_to_withdraw);
 
@@ -200,7 +197,7 @@ async fn success_empty_out_stake_with_fee() {
             &user_stake_recipient.pubkey(),
             &user_transfer_authority,
             &other_deposit_info.pool_account.pubkey(),
-            &other_validator_stake_account.stake_account,
+            &withdraw_validator_stake_account.stake_account,
             &new_authority,
             pool_tokens_to_withdraw,
         )
@@ -210,14 +207,11 @@ async fn success_empty_out_stake_with_fee() {
     // Check balance of validator stake account is MINIMUM + rent-exemption
     let validator_stake_account = get_account(
         &mut context.banks_client,
-        &other_validator_stake_account.stake_account,
+        &withdraw_validator_stake_account.stake_account,
     )
     .await;
-    let stake_state =
-        deserialize::<stake::state::StakeStateV2>(&validator_stake_account.data).unwrap();
-    let meta = stake_state.meta().unwrap();
     assert_eq!(
         validator_stake_account.lamports,
-        minimum_stake_lamports(&meta, stake_minimum_delegation)
+        minimum_stake_lamports(STAKE_ACCOUNT_RENT_EXEMPTION, stake_minimum_delegation)
     );
 }

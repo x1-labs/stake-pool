@@ -162,6 +162,10 @@ export interface StakePool {
   maxValidatorStake?: BN | undefined;
 }
 
+// X1 fork: `version` is prepended before `accountType`, and
+// `maxValidatorStake` is appended. The trailing `reserved: [u8; 256]` is
+// intentionally not modelled — this layout is only ever used to decode
+// accounts written by the program, and trailing bytes are ignored.
 export const StakePoolLayout = struct<StakePool>([
   u8('version'),
   u8('accountType'),

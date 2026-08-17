@@ -12,14 +12,7 @@ pub mod state;
 #[cfg(not(feature = "no-entrypoint"))]
 pub mod entrypoint;
 
-// Export current sdk types for downstream users building with a different sdk
-// version
-pub use solana_program;
-use {
-    crate::state::Fee,
-    solana_program::{pubkey::Pubkey, stake::state::Meta},
-    std::num::NonZeroU32,
-};
+use {crate::state::Fee, solana_pubkey::Pubkey, std::num::NonZeroU32};
 
 /// Seed for deposit authority seed
 const AUTHORITY_DEPOSIT: &[u8] = b"deposit";
@@ -33,6 +26,12 @@ const TRANSIENT_STAKE_SEED_PREFIX: &[u8] = b"transient";
 /// Seed for ephemeral stake account
 const EPHEMERAL_STAKE_SEED_PREFIX: &[u8] = b"ephemeral";
 
+/// Current version written to the `version` field of [`state::StakePool`].
+///
+/// X1 fork only. Live X1 pool accounts carry this byte at offset 0, ahead of
+/// `account_type`, so it is part of the on-chain layout and must not be removed.
+pub const CURRENT_STAKE_POOL_VERSION: u8 = 1;
+
 /// Minimum amount of staked lamports required in a validator stake account to
 /// allow for merges without a mismatch on credits observed
 pub const MINIMUM_ACTIVE_STAKE: u64 = 1_000_000;
@@ -42,14 +41,21 @@ pub const MINIMUM_RESERVE_LAMPORTS: u64 = 0;
 
 /// Maximum amount of validator stake accounts to update per
 /// `UpdateValidatorListBalance` instruction, based on compute limits
-pub const MAX_VALIDATORS_TO_UPDATE: usize = 5;
+pub const MAX_VALIDATORS_TO_UPDATE: usize = 4;
 
 /// Maximum factor by which a withdrawal fee can be increased per epoch
 /// protecting stakers from malicious users.
 /// If current fee is 0, `WITHDRAWAL_BASELINE_FEE` is used as the baseline
-pub const MAX_WITHDRAWAL_FEE_INCREASE: Fee = Fee {
+pub const MAX_WITHDRAWAL_FEE_INCREASE_FACTOR: Fee = Fee {
     numerator: 3,
     denominator: 2,
+};
+/// Maximum amount by which a withdrawal fee can be increased per epoch
+/// protecting stakers from malicious users.
+/// If current fee is 0, `WITHDRAWAL_BASELINE_FEE` is used as the baseline
+pub const MAX_WITHDRAWAL_FEE_INCREASE: Fee = Fee {
+    numerator: 1,
+    denominator: 200,
 };
 /// Drop-in baseline fee when evaluating withdrawal fee increases when fee is 0
 pub const WITHDRAWAL_BASELINE_FEE: Fee = Fee {
@@ -68,9 +74,11 @@ pub const MAX_VALIDATORS_IN_POOL: u32 = 20_000;
 /// Get the stake amount under consideration when calculating pool token
 /// conversions
 #[inline]
-pub fn minimum_stake_lamports(meta: &Meta, stake_program_minimum_delegation: u64) -> u64 {
-    meta.rent_exempt_reserve
-        .saturating_add(minimum_delegation(stake_program_minimum_delegation))
+pub fn minimum_stake_lamports(
+    rent_exempt_reserve: u64,
+    stake_program_minimum_delegation: u64,
+) -> u64 {
+    rent_exempt_reserve.saturating_add(minimum_delegation(stake_program_minimum_delegation))
 }
 
 /// Get the minimum delegation required by a stake account in a stake pool
@@ -82,9 +90,8 @@ pub fn minimum_delegation(stake_program_minimum_delegation: u64) -> u64 {
 /// Get the stake amount under consideration when calculating pool token
 /// conversions
 #[inline]
-pub fn minimum_reserve_lamports(meta: &Meta) -> u64 {
-    meta.rent_exempt_reserve
-        .saturating_add(MINIMUM_RESERVE_LAMPORTS)
+pub fn minimum_reserve_lamports(rent_exempt_reserve: u64) -> u64 {
+    rent_exempt_reserve.saturating_add(MINIMUM_RESERVE_LAMPORTS)
 }
 
 /// Generates the deposit authority program address for the stake pool
@@ -161,10 +168,10 @@ pub fn find_ephemeral_stake_program_address(
     )
 }
 
-solana_program::declare_id!("XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux");
+solana_pubkey::declare_id!("XPoo1Fx6KNgeAzFcq2dPTo95bWGUSj5KdPVqYj9CZux");
 /// Program id for devnet
 pub mod devnet {
-    solana_program::declare_id!("DPoo15wWDqpPJJtS2MUZ49aRxqz5ZaaJCJP4z8bLuib");
+    solana_pubkey::declare_id!("DPoo15wWDqpPJJtS2MUZ49aRxqz5ZaaJCJP4z8bLuib");
 }
 
 #[cfg(test)]

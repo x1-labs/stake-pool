@@ -1,19 +1,17 @@
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::items_after_test_module)]
-#![cfg(feature = "test-sbf")]
-
 mod helpers;
 
 use {
     bincode::deserialize,
     helpers::*,
-    solana_program::{clock::Epoch, instruction::InstructionError, pubkey::Pubkey, stake},
+    solana_program::{clock::Epoch, instruction::InstructionError, pubkey::Pubkey},
     solana_program_test::*,
     solana_sdk::{
-        signature::Signer,
-        stake::instruction::StakeError,
+        signature::{Keypair, Signer},
         transaction::{Transaction, TransactionError},
     },
+    solana_stake_interface::{self as stake, error::StakeError},
     spl_stake_pool::{
         error::StakePoolError, find_ephemeral_stake_program_address,
         find_transient_stake_program_address, id, instruction, MINIMUM_RESERVE_LAMPORTS,
@@ -594,8 +592,36 @@ async fn fail_additional_with_decreasing() {
 #[tokio::test]
 async fn fail_with_force_destaked_validator() {}
 
+// ---------------------------------------------------------------------------
+// X1 fork: optional per-validator stake cap (`max_validator_stake`).
+//
+// The cap is checked against active + transient stake, so these tests read the
+// validator's current stake from the list and set the cap relative to it. That
+// keeps the boundary exact regardless of what `setup()` happens to deposit.
+// ---------------------------------------------------------------------------
+
+/// Current active + transient stake for the pool's validator.
+async fn current_validator_stake(
+    context: &mut ProgramTestContext,
+    stake_pool_accounts: &StakePoolAccounts,
+    vote_account: &Pubkey,
+) -> u64 {
+    let validator_list = stake_pool_accounts
+        .get_validator_list(&mut context.banks_client)
+        .await;
+    validator_list
+        .validators
+        .iter()
+        .find(|v| v.vote_account_address == *vote_account)
+        .expect("validator must be in the list")
+        .stake_lamports()
+        .unwrap()
+}
+
+#[test_case(true; "additional")]
+#[test_case(false; "non-additional")]
 #[tokio::test]
-async fn test_max_validator_stake_limit() {
+async fn fail_increase_above_max_validator_stake(use_additional_instruction: bool) {
     let (mut context, stake_pool_accounts, validator_stake, _reserve_lamports) = setup().await;
 
     let current_minimum_delegation = stake_pool_get_minimum_delegation(
@@ -604,29 +630,133 @@ async fn test_max_validator_stake_limit() {
         &context.last_blockhash,
     )
     .await;
+    let current = current_validator_stake(
+        &mut context,
+        &stake_pool_accounts,
+        &validator_stake.vote.pubkey(),
+    )
+    .await;
 
-    // Set a max validator stake limit that's less than what the validator already has
-    // The validator already has some stake from setup()
-    let max_stake_limit = current_minimum_delegation * 5;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction::set_max_validator_stake(
-            &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
-            &stake_pool_accounts.manager.pubkey(),
-            Some(max_stake_limit),
-        )],
-        Some(&context.payer.pubkey()),
-        &[&context.payer, &stake_pool_accounts.manager],
-        context.last_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(transaction)
+    // Allow exactly `headroom` more, then ask for one lamport past it.
+    let headroom = current_minimum_delegation * 3;
+    let error = stake_pool_accounts
+        .set_max_validator_stake(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &stake_pool_accounts.manager,
+            Some(current + headroom),
+        )
+        .await;
+    assert!(error.is_none(), "manager should be able to set the cap");
+
+    let error = stake_pool_accounts
+        .increase_validator_stake_either(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &validator_stake.transient_stake_account,
+            &validator_stake.stake_account,
+            &validator_stake.vote.pubkey(),
+            headroom + 1,
+            validator_stake.transient_stake_seed,
+            use_additional_instruction,
+        )
         .await
+        .unwrap()
         .unwrap();
 
-    // Try to increase stake beyond the limit - should fail
-    let increase_amount = max_stake_limit; // This will exceed when added to existing stake
+    assert_eq!(
+        error,
+        TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(StakePoolError::ExceedsMaxValidatorStake as u32)
+        )
+    );
+
+    // The failed increase must not have created a transient stake account.
+    let transient_account = context
+        .banks_client
+        .get_account(validator_stake.transient_stake_account)
+        .await
+        .unwrap();
+    assert!(transient_account.is_none());
+}
+
+#[tokio::test]
+async fn success_increase_exactly_to_max_validator_stake() {
+    let (mut context, stake_pool_accounts, validator_stake, _reserve_lamports) = setup().await;
+
+    let current_minimum_delegation = stake_pool_get_minimum_delegation(
+        &mut context.banks_client,
+        &context.payer,
+        &context.last_blockhash,
+    )
+    .await;
+    let current = current_validator_stake(
+        &mut context,
+        &stake_pool_accounts,
+        &validator_stake.vote.pubkey(),
+    )
+    .await;
+
+    let headroom = current_minimum_delegation * 3;
+    stake_pool_accounts
+        .set_max_validator_stake(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &stake_pool_accounts.manager,
+            Some(current + headroom),
+        )
+        .await;
+
+    // Landing exactly on the cap is allowed: the check rejects only `>` cap.
+    let error = stake_pool_accounts
+        .increase_validator_stake_either(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &validator_stake.transient_stake_account,
+            &validator_stake.stake_account,
+            &validator_stake.vote.pubkey(),
+            headroom,
+            validator_stake.transient_stake_seed,
+            false,
+        )
+        .await;
+    assert!(error.is_none(), "increase up to the cap must succeed");
+}
+
+#[tokio::test]
+async fn success_increase_after_clearing_max_validator_stake() {
+    let (mut context, stake_pool_accounts, validator_stake, _reserve_lamports) = setup().await;
+
+    let current_minimum_delegation = stake_pool_get_minimum_delegation(
+        &mut context.banks_client,
+        &context.payer,
+        &context.last_blockhash,
+    )
+    .await;
+    let current = current_validator_stake(
+        &mut context,
+        &stake_pool_accounts,
+        &validator_stake.vote.pubkey(),
+    )
+    .await;
+    let increase_amount = current_minimum_delegation * 3;
+
+    // Cap at the current stake, so any increase is refused.
+    stake_pool_accounts
+        .set_max_validator_stake(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &stake_pool_accounts.manager,
+            Some(current),
+        )
+        .await;
+
     let error = stake_pool_accounts
         .increase_validator_stake_either(
             &mut context.banks_client,
@@ -642,7 +772,6 @@ async fn test_max_validator_stake_limit() {
         .await
         .unwrap()
         .unwrap();
-
     assert_eq!(
         error,
         TransactionError::InstructionError(
@@ -651,13 +780,38 @@ async fn test_max_validator_stake_limit() {
         )
     );
 
-    // Try to increase stake with a very small amount - might still fail if over limit
-    let increase_amount = current_minimum_delegation;
-    let result = stake_pool_accounts
-        .increase_validator_stake_either(
+    // Clearing the cap unblocks the identical increase.
+    stake_pool_accounts
+        .set_max_validator_stake(
             &mut context.banks_client,
             &context.payer,
             &context.last_blockhash,
+            &stake_pool_accounts.manager,
+            None,
+        )
+        .await;
+    assert_eq!(
+        stake_pool_accounts
+            .get_stake_pool(&mut context.banks_client)
+            .await
+            .max_validator_stake,
+        None
+    );
+
+    // A fresh blockhash is required: the retried increase is byte-identical to
+    // the one above, so reusing the blockhash would produce a duplicate
+    // signature and be rejected before ever reaching the program.
+    let last_blockhash = context
+        .banks_client
+        .get_new_latest_blockhash(&context.last_blockhash)
+        .await
+        .unwrap();
+
+    let error = stake_pool_accounts
+        .increase_validator_stake_either(
+            &mut context.banks_client,
+            &context.payer,
+            &last_blockhash,
             &validator_stake.transient_stake_account,
             &validator_stake.stake_account,
             &validator_stake.vote.pubkey(),
@@ -666,46 +820,92 @@ async fn test_max_validator_stake_limit() {
             false,
         )
         .await;
-
-    // This might fail if we're over the limit, so check
-    if result.is_some() {
-        // If it failed, it should be because of the max stake limit
-        // We can't check the exact error type here due to type differences
-        // but we know it failed as expected
-    }
-
-    // Remove the limit
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction::set_max_validator_stake(
-            &id(),
-            &stake_pool_accounts.stake_pool.pubkey(),
-            &stake_pool_accounts.manager.pubkey(),
-            None,
-        )],
-        Some(&context.payer.pubkey()),
-        &[&context.payer, &stake_pool_accounts.manager],
-        context.last_blockhash,
+    assert!(
+        error.is_none(),
+        "increase must succeed once the cap is cleared"
     );
-    context
-        .banks_client
-        .process_transaction(transaction)
-        .await
-        .unwrap();
+}
 
-    // Now a large increase should succeed
-    let increase_amount = max_stake_limit * 2;
+#[tokio::test]
+async fn success_set_and_clear_max_validator_stake() {
+    let (mut context, stake_pool_accounts, _validator_stake, _reserve_lamports) = setup().await;
+
+    // Pools start with no cap, and the account is sized to hold one.
+    assert_eq!(
+        stake_pool_accounts
+            .get_stake_pool(&mut context.banks_client)
+            .await
+            .max_validator_stake,
+        None
+    );
+
     stake_pool_accounts
-        .increase_validator_stake_either(
+        .set_max_validator_stake(
             &mut context.banks_client,
             &context.payer,
             &context.last_blockhash,
-            &validator_stake.transient_stake_account,
-            &validator_stake.stake_account,
-            &validator_stake.vote.pubkey(),
-            increase_amount,
-            validator_stake.transient_stake_seed + 1,
-            true,
+            &stake_pool_accounts.manager,
+            Some(u64::MAX),
+        )
+        .await;
+    // u64::MAX is the widest encoding, proving the write fits the account
+    // without a realloc.
+    assert_eq!(
+        stake_pool_accounts
+            .get_stake_pool(&mut context.banks_client)
+            .await
+            .max_validator_stake,
+        Some(u64::MAX)
+    );
+
+    stake_pool_accounts
+        .set_max_validator_stake(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &stake_pool_accounts.manager,
+            None,
+        )
+        .await;
+    assert_eq!(
+        stake_pool_accounts
+            .get_stake_pool(&mut context.banks_client)
+            .await
+            .max_validator_stake,
+        None
+    );
+}
+
+#[tokio::test]
+async fn fail_set_max_validator_stake_with_wrong_manager() {
+    let (mut context, stake_pool_accounts, _validator_stake, _reserve_lamports) = setup().await;
+
+    let not_the_manager = Keypair::new();
+    let error = stake_pool_accounts
+        .set_max_validator_stake(
+            &mut context.banks_client,
+            &context.payer,
+            &context.last_blockhash,
+            &not_the_manager,
+            Some(1_000_000_000),
         )
         .await
+        .unwrap()
         .unwrap();
+
+    match error {
+        TransactionError::InstructionError(0, InstructionError::Custom(code)) => {
+            assert_eq!(code, StakePoolError::WrongManager as u32)
+        }
+        _ => panic!("wrong error occurred: {:?}", error),
+    }
+
+    // And the cap must be unchanged.
+    assert_eq!(
+        stake_pool_accounts
+            .get_stake_pool(&mut context.banks_client)
+            .await
+            .max_validator_stake,
+        None
+    );
 }

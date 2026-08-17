@@ -39,6 +39,7 @@ class Fee(NamedTuple):
 
 class StakePool(NamedTuple):
     """Stake pool and all its data."""
+    version: int
     manager: Pubkey
     staker: Pubkey
     stake_deposit_authority: Pubkey
@@ -68,11 +69,13 @@ class StakePool(NamedTuple):
     next_sol_withdrawal_fee: Optional[Fee]
     last_epoch_pool_token_supply: int
     last_epoch_total_lamports: int
+    max_validator_stake: Optional[int]
 
     @classmethod
     def decode(cls, data: bytes):
         parsed = DECODE_STAKE_POOL_LAYOUT.parse(data)
         return StakePool(
+            version=parsed['version'],
             manager=Pubkey(parsed['manager']),
             staker=Pubkey(parsed['staker']),
             stake_deposit_authority=Pubkey(parsed['stake_deposit_authority']),
@@ -102,6 +105,7 @@ class StakePool(NamedTuple):
             next_sol_withdrawal_fee=Fee.decode_optional_container(parsed['next_sol_withdrawal_fee']),
             last_epoch_pool_token_supply=parsed['last_epoch_pool_token_supply'],
             last_epoch_total_lamports=parsed['last_epoch_total_lamports'],
+            max_validator_stake=parsed['max_validator_stake'],
         )
 
 

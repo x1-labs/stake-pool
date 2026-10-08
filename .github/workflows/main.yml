@@ -9,7 +9,7 @@ on:
 jobs:
   format_and_lint_programs:
     name: Format & Lint Programs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
 
   format_and_lint_client_js:
     name: Format & Lint Client JS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
 
   format_and_lint_cli:
     name: Format & Lint CLI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -64,7 +64,7 @@ jobs:
 
   audit_rust:
     name: Audit Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -84,7 +84,7 @@ jobs:
 
   semver_rust:
     name: Check semver Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
 
   spellcheck_rust:
     name: Spellcheck Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -124,7 +124,7 @@ jobs:
 
   build_programs:
     name: Build programs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: format_and_lint_programs
     steps:
       - name: Git Checkout
@@ -154,7 +154,7 @@ jobs:
 
   test_programs:
     name: Test Programs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: format_and_lint_programs
     steps:
       - name: Git Checkout
@@ -173,7 +173,7 @@ jobs:
 
   test_client_js:
     name: Test Client JS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -188,7 +188,7 @@ jobs:
 
   test_client_cli:
     name: Test Client CLI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Git Checkout
         uses: actions/checkout@v4
@@ -205,7 +205,7 @@ jobs:
 
   test_client_py:
     name: Test Client Python
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build_programs
     steps:
       - name: Git Checkout
